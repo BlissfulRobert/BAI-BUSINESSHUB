@@ -82,11 +82,8 @@
     <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <div class="flex items-center gap-10">
-          <a href="/" class="flex items-center gap-2">
-            <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <span class="text-white font-bold text-sm">B</span>
-            </div>
-            <span class="text-lg font-bold text-white">BAI Business Hub</span>
+          <a href="/">
+            <img src="/bai-business-logo.png" alt="BAI Business Hub" class="h-auto max-w-[250px] mt-10" />
           </a>
           <div class="hidden lg:flex items-center gap-1">
             {#each navLinks as link}
