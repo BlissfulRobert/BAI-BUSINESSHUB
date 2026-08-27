@@ -1,0 +1,111 @@
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  import { supabase } from '$lib/supabase/client';
+
+  let email = '';
+  let password = '';
+  let error = '';
+  let loading = false;
+
+  async function handleLogin() {
+    error = '';
+    loading = true;
+
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (authError) {
+      error = authError.message;
+      loading = false;
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', data.user.id)
+      .single();
+
+    loading = false;
+
+    if (profile?.role === 'admin') {
+      goto('/admin');
+    } else {
+      goto('/member');
+    }
+  }
+</script>
+
+<svelte:head>
+  <title>Login - BAI Business Hub</title>
+</svelte:head>
+
+<div class="min-h-[80vh] flex items-center justify-center py-12 px-4">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-white">Welcome Back</h1>
+      <p class="text-dark-400 mt-2">Sign in to your account</p>
+    </div>
+
+    <form on:submit|preventDefault={handleLogin} class="card space-y-6">
+      {#if error}
+        <div class="bg-red-900/30 border border-red-800 rounded-lg p-4 text-sm text-red-300">
+          {error}
+        </div>
+      {/if}
+
+      <div>
+        <label for="email" class="block text-sm font-medium text-dark-200 mb-2">Email</label>
+        <input
+          id="email"
+          type="email"
+          bind:value={email}
+          class="input"
+          placeholder="you@example.com"
+          required
+        />
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-medium text-dark-200 mb-2">Password</label>
+        <input
+          id="password"
+          type="password"
+          bind:value={password}
+          class="input"
+          placeholder="••••••••"
+          required
+        />
+      </div>
+
+      <div class="flex items-center justify-between text-sm">
+        <label class="flex items-center gap-2">
+          <input type="checkbox" class="w-4 h-4 rounded bg-dark-700 border-dark-600 text-primary-600 focus:ring-primary-500" />
+          <span class="text-dark-400">Remember me</span>
+        </label>
+        <a href="/auth/reset-password" class="text-primary-400 hover:text-primary-300">Forgot password?</a>
+      </div>
+
+      <button type="submit" disabled={loading} class="btn-primary w-full py-3">
+        {#if loading}
+          <span class="flex items-center justify-center gap-2">
+            <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Signing in...
+          </span>
+        {:else}
+          Sign In
+        {/if}
+      </button>
+
+      <p class="text-center text-sm text-dark-400">
+        Don't have an account?
+        <a href="/auth/register" class="text-primary-400 hover:text-primary-300">Register here</a>
+      </p>
+    </form>
+  </div>
+</div>
