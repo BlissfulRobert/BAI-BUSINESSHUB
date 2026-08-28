@@ -34,3 +34,7 @@ export function formatDuration(startTime: string, endTime: string): string {
   if (minutes === 0) return `${hours}hr`;
   return `${hours}hr ${minutes}min`;
 }
+
+export function getRoomImage(roomName: string | undefined | null): string {
+  return `/${roomName?.toLowerCase().includes('meeting') ? 'meeting' : 'office'}.png`;
+}

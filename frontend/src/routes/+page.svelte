@@ -9,6 +9,7 @@
   import Gallery from '$lib/components/Gallery.svelte';
   import Map from '$lib/components/Map.svelte';
   import type { Room, Plan, GalleryImage, Review } from '$lib/types/database';
+  import { getRoomImage } from '$lib/utils/format';
 
   let rooms: Room[] = [];
   let plans: Plan[] = [];
@@ -100,8 +101,8 @@
 
       <div class="relative hidden lg:block">
         <div class="aspect-[4/3] bg-white rounded-2xl overflow-hidden border border-dark-200 shadow-2xl">
-          {#if rooms.length > 0 && rooms[0].images && rooms[0].images.length > 0}
-            <img src={rooms[0].images[0]} alt={rooms[0].name} class="w-full h-full object-cover" />
+          {#if rooms.length > 0}
+            <img src={getRoomImage(rooms[0].name)} alt={rooms[0].name} class="w-full h-full object-cover" />
           {:else}
             <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-dark-200 to-dark-300">
               <div class="text-center">
