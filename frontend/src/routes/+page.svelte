@@ -18,6 +18,13 @@
   let reviews: Review[] = [];
   let loading = true;
 
+  // Hardcoded room image mapping (dry-run of per-room assets) until room
+  // images are managed via the database.
+  const IMAGE_BY_SLUG: Record<string, string> = {
+    'conference-room': '/office.png',
+    'meeting-room': '/meeting.png',
+  };
+
   onMount(async () => {
     const [roomsRes, plansRes, galleryRes, reviewsRes] = await Promise.all([
       supabase.from('rooms').select('*').eq('is_active', true).order('name'),
@@ -26,7 +33,11 @@
       supabase.from('reviews').select('*, profile:profiles(full_name)').order('created_at', { ascending: false }).limit(6)
     ]);
 
-    rooms = roomsRes.data ?? [];
+    rooms =
+      roomsRes.data?.map((r) => ({
+        ...r,
+        images: r.slug ? [IMAGE_BY_SLUG[r.slug] ?? r.images?.[0]].filter(Boolean) : r.images
+      })) ?? [];
     plans = plansRes.data ?? [];
     galleryImages = galleryRes.data ?? [];
     reviews = reviewsRes.data ?? [];
@@ -100,8 +111,8 @@
 
       <div class="relative hidden lg:block">
         <div class="aspect-[4/3] bg-white rounded-2xl overflow-hidden border border-dark-200 shadow-2xl">
-          {#if rooms.length > 0 && rooms[0].images && rooms[0].images.length > 0}
-            <img src={rooms[0].images[0]} alt={rooms[0].name} class="w-full h-full object-cover" />
+          {#if rooms.length > 0}
+            <img src="/office.png" alt={rooms[0].name} class="w-full h-full object-cover" />
           {:else}
             <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-dark-200 to-dark-300">
               <div class="text-center">
