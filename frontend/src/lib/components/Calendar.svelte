@@ -1,116 +1,147 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher } from 'svelte';
+	import { buildMonthGrid, isWeekend, toISODate, type CalendarDay } from '$lib/utils/dates';
+	import type { Booking } from '$lib/types/database';
 
-  export let selectedDate: string = '';
-  export let minDate: string = '';
+	/** All blocking bookings for the room, keyed by ISO date. */
+	export let bookingsByDate: Record<string, Booking[]> = {};
+	export let selectedDate: string | null = null;
+	/** How many days ahead are actually loaded/bookable — caps forward navigation. */
+	export let lookaheadDays = 30;
+	/** Greys out Sat/Sun — used for plans (Weekly) that only book weekdays. */
+	export let disableWeekends = false;
+	/**
+	 * ISO dates included in a multi-day series (Weekly/Monthly). When set, the
+	 * range is highlighted on the calendar so the member can see the full span
+	 * they're booking — start is the strongest, end is distinct, interior days
+	 * get a subtle tint. Purely visual; does not affect picking or disabling.
+	 */
+	export let rangeDates: string[] = [];
 
-  const dispatch = createEventDispatcher();
+	const dispatch = createEventDispatcher<{ selectDate: string }>();
 
-  let currentMonth = new Date();
-  let calendarDays: Date[] = [];
+	const today = new Date();
+	let viewYear = today.getFullYear();
+	let viewMonth = today.getMonth();
 
-  $: {
-    calendarDays = generateCalendar(currentMonth);
-  }
+	const maxDate = new Date(Date.now() + lookaheadDays * 24 * 60 * 60 * 1000);
 
-  function generateCalendar(month: Date): Date[] {
-    const year = month.getFullYear();
-    const m = month.getMonth();
-    const firstDay = new Date(year, m, 1);
-    const lastDay = new Date(year, m + 1, 0);
-    const days: Date[] = [];
+	// Sorted range bounds for series highlighting.
+	const rangeStart = rangeDates[0] ?? null;
+	const rangeEnd = rangeDates[rangeDates.length - 1] ?? null;
+	const rangeSet = new Set(rangeDates);
 
-    const startPad = firstDay.getDay();
-    for (let i = startPad - 1; i >= 0; i--) {
-      days.push(new Date(year, m, -i));
-    }
+	$: days = buildMonthGrid(viewYear, viewMonth, bookingsByDate);
+	$: monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-US', {
+		month: 'long',
+		year: 'numeric'
+	});
+	$: canGoPrev = new Date(viewYear, viewMonth, 1) > new Date(today.getFullYear(), today.getMonth(), 1);
+	$: canGoNext = new Date(viewYear, viewMonth + 1, 1) <= maxDate;
 
-    for (let d = 1; d <= lastDay.getDate(); d++) {
-      days.push(new Date(year, m, d));
-    }
+	function prevMonth() {
+		if (!canGoPrev) return;
+		if (viewMonth === 0) {
+			viewMonth = 11;
+			viewYear -= 1;
+		} else {
+			viewMonth -= 1;
+		}
+	}
 
-    return days;
-  }
+	function nextMonth() {
+		if (!canGoNext) return;
+		if (viewMonth === 11) {
+			viewMonth = 0;
+			viewYear += 1;
+		} else {
+			viewMonth += 1;
+		}
+	}
 
-  function prevMonth() {
-    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
-  }
+	function pick(day: CalendarDay) {
+		if (day.isPast || day.isFullyBooked || !day.isCurrentMonth) return;
+		if (disableWeekends && isWeekend(day.iso)) return;
+		if (toISODate(new Date(day.iso)) > toISODate(maxDate)) return;
+		dispatch('selectDate', day.iso);
+	}
 
-  function nextMonth() {
-    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
-  }
-
-  function selectDate(date: Date) {
-    const dateStr = date.toISOString().split('T')[0];
-    if (isDateDisabled(date)) return;
-    selectedDate = dateStr;
-    dispatch('select', { date: dateStr });
-  }
-
-  function isDateDisabled(date: Date): boolean {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dateCopy = new Date(date);
-    dateCopy.setHours(0, 0, 0, 0);
-    return dateCopy < today || date.getMonth() !== currentMonth.getMonth();
-  }
-
-  function isToday(date: Date): boolean {
-    const today = new Date();
-    return date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear();
-  }
-
-  function isSelected(date: Date): boolean {
-    if (!selectedDate) return false;
-    return date.toISOString().split('T')[0] === selectedDate;
-  }
-
-  $: monthLabel = currentMonth.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+	const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 </script>
 
-<div class="card">
-  <div class="flex items-center justify-between mb-4">
-    <button on:click={prevMonth} class="p-2 hover:bg-dark-700 rounded-lg transition-colors">
-      <svg class="w-5 h-5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-      </svg>
-    </button>
-    <h3 class="text-sm font-medium text-white">{monthLabel}</h3>
-    <button on:click={nextMonth} class="p-2 hover:bg-dark-700 rounded-lg transition-colors">
-      <svg class="w-5 h-5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-      </svg>
-    </button>
-  </div>
+<div class="rounded-xl border border-dark-200 bg-white p-4">
+	<div class="flex items-center justify-between">
+		<button
+			type="button"
+			on:click={prevMonth}
+			disabled={!canGoPrev}
+			aria-label="Previous month"
+			class="rounded-md p-1.5 disabled:cursor-not-allowed disabled:opacity-30 text-dark-500 hover:bg-dark-100"
+		>
+			&larr;
+		</button>
+		<span class="text-sm font-semibold text-dark-900">{monthLabel}</span>
+		<button
+			type="button"
+			on:click={nextMonth}
+			disabled={!canGoNext}
+			aria-label="Next month"
+			class="rounded-md p-1.5 disabled:cursor-not-allowed disabled:opacity-30 text-dark-500 hover:bg-dark-100"
+		>
+			&rarr;
+		</button>
+	</div>
 
-  <div class="grid grid-cols-7 gap-1 mb-2">
-    {#each ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as day}
-      <div class="text-center text-xs font-medium text-dark-500 py-2">{day}</div>
-    {/each}
-  </div>
+	<div class="mt-3 grid grid-cols-7 gap-1 text-center text-xs font-medium text-dark-500">
+		{#each weekdayLabels as label}
+			<div>{label}</div>
+		{/each}
+	</div>
 
-  <div class="grid grid-cols-7 gap-1">
-    {#each calendarDays as date}
-      {@const disabled = isDateDisabled(date)}
-      {@const selected = isSelected(date)}
-      {@const today = isToday(date)}
-      <button
-        on:click={() => selectDate(date)}
-        disabled={disabled}
-        class="aspect-square flex items-center justify-center text-sm rounded-lg transition-all duration-200
-          {selected
-            ? 'bg-primary-600 text-white font-medium'
-            : today
-              ? 'bg-dark-700 text-primary-400 font-medium'
-              : disabled
-                ? 'text-dark-600 cursor-not-allowed'
-                : 'text-dark-200 hover:bg-dark-700'
-          }"
-      >
-        {date.getDate()}
-      </button>
-    {/each}
-  </div>
+	<div class="mt-1 grid grid-cols-7 gap-1">
+		{#each days as day (day.iso)}
+			{@const beyondLookahead = day.iso > toISODate(maxDate)}
+			{@const isWeekendDay = disableWeekends && isWeekend(day.iso)}
+			{@const disabled = day.isPast || day.isFullyBooked || !day.isCurrentMonth || beyondLookahead || isWeekendDay}
+			{@const isRangeStart = rangeDates.length > 1 && day.iso === rangeStart}
+			{@const isRangeEnd = rangeDates.length > 1 && day.iso === rangeEnd}
+			{@const isRangeInterior = rangeDates.length > 1 && day.iso !== rangeStart && day.iso !== rangeEnd && rangeSet.has(day.iso)}
+			<button
+				type="button"
+				on:click={() => pick(day)}
+				{disabled}
+				aria-pressed={selectedDate === day.iso}
+				class="relative aspect-square rounded-lg text-sm transition
+					{!day.isCurrentMonth ? 'text-dark-300' : ''}
+					{disabled && day.isCurrentMonth ? 'cursor-not-allowed text-dark-300' : ''}
+					{!disabled && day.isCurrentMonth && !isRangeStart && !isRangeEnd && !isRangeInterior
+						? 'text-dark-700 hover:bg-dark-100'
+						: ''}
+					{isRangeInterior ? '!bg-primary-500/15 !text-primary-700' : ''}
+					{isRangeEnd ? '!bg-dark-800 !text-white' : ''}
+					{selectedDate === day.iso || isRangeStart ? '!bg-primary-600 !text-white' : ''}"
+			>
+				{day.dayOfMonth}
+				{#if day.isCurrentMonth && day.isFullyBooked && !day.isPast}
+					<span
+						class="absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500"
+						title="Fully booked"
+					></span>
+				{/if}
+			</button>
+		{/each}
+	</div>
+
+	<div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dark-500">
+		<span class="flex items-center gap-1">
+			<span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+			Fully booked
+		</span>
+		{#if rangeDates.length > 1}
+			<span class="flex items-center gap-1">
+				<span class="h-1.5 w-1.5 rounded-full bg-primary-500/60"></span>
+				Included in booking
+			</span>
+		{/if}
+	</div>
 </div>

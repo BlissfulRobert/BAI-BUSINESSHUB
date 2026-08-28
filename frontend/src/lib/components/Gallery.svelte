@@ -46,7 +46,7 @@
         class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
           {selectedCategory === category
             ? 'bg-primary-600 text-white'
-            : 'bg-dark-800 text-dark-400 hover:text-white border border-dark-700'}"
+            : 'bg-dark-100 text-dark-500 hover:text-dark-900 border border-dark-200'}"
       >
         {category.charAt(0).toUpperCase() + category.slice(1)}
       </button>
@@ -57,7 +57,7 @@
     {#each filteredImages as image, i (image.id)}
       <button
         on:click={() => openLightbox(i)}
-        class="group aspect-square bg-dark-800 rounded-xl overflow-hidden border border-dark-700 hover:border-primary-600/50 transition-all duration-300 relative"
+        class="group aspect-square bg-dark-100 rounded-xl overflow-hidden border border-dark-200 hover:border-primary-600/50 transition-all duration-300 relative"
       >
         <img
           src={image.image_url}
@@ -69,7 +69,7 @@
           <div class="absolute bottom-0 left-0 right-0 p-3">
             <p class="text-sm font-medium text-white">{image.title}</p>
             {#if image.description}
-              <p class="text-xs text-dark-300 mt-0.5 line-clamp-1">{image.description}</p>
+              <p class="text-xs text-dark-500 mt-0.5 line-clamp-1">{image.description}</p>
             {/if}
           </div>
         </div>

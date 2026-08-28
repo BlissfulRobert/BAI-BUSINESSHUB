@@ -76,19 +76,19 @@
 <div class="min-h-[80vh] flex items-center justify-center py-12 px-4">
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
-      <h1 class="text-3xl font-bold text-white">Create Account</h1>
-      <p class="text-dark-400 mt-2">Join BAI Business Hub today</p>
+      <h1 class="text-3xl font-bold text-dark-900">Create Account</h1>
+      <p class="text-dark-500 mt-2">Join BAI Business Hub today</p>
     </div>
 
     <form on:submit|preventDefault={handleRegister} class="card space-y-6">
       {#if error}
-        <div class="bg-red-900/30 border border-red-800 rounded-lg p-4 text-sm text-red-300">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
           {error}
         </div>
       {/if}
 
       <div>
-        <label for="fullName" class="block text-sm font-medium text-dark-200 mb-2">Full Name</label>
+        <label for="fullName" class="block text-sm font-medium text-dark-700 mb-2">Full Name</label>
         <input
           id="fullName"
           type="text"
@@ -100,7 +100,7 @@
       </div>
 
       <div>
-        <label for="email" class="block text-sm font-medium text-dark-200 mb-2">Email</label>
+        <label for="email" class="block text-sm font-medium text-dark-700 mb-2">Email</label>
         <input
           id="email"
           type="email"
@@ -112,7 +112,7 @@
       </div>
 
       <div>
-        <label for="phone" class="block text-sm font-medium text-dark-200 mb-2">Phone <span class="text-dark-500">(optional)</span></label>
+        <label for="phone" class="block text-sm font-medium text-dark-700 mb-2">Phone <span class="text-dark-500">(optional)</span></label>
         <input
           id="phone"
           type="tel"
@@ -123,7 +123,7 @@
       </div>
 
       <div>
-        <label for="password" class="block text-sm font-medium text-dark-200 mb-2">Password</label>
+        <label for="password" class="block text-sm font-medium text-dark-700 mb-2">Password</label>
         <input
           id="password"
           type="password"
@@ -136,7 +136,7 @@
       </div>
 
       <div>
-        <label for="confirmPassword" class="block text-sm font-medium text-dark-200 mb-2">Confirm Password</label>
+        <label for="confirmPassword" class="block text-sm font-medium text-dark-700 mb-2">Confirm Password</label>
         <input
           id="confirmPassword"
           type="password"
@@ -161,9 +161,9 @@
         {/if}
       </button>
 
-      <p class="text-center text-sm text-dark-400">
+      <p class="text-center text-sm text-dark-600">
         Already have an account?
-        <a href="/auth/login" class="text-primary-400 hover:text-primary-300">Sign in</a>
+        <a href="/auth/login" class="text-primary-700 hover:text-primary-600">Sign in</a>
       </p>
     </form>
   </div>
