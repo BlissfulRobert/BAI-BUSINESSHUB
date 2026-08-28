@@ -176,9 +176,16 @@
     return b.date < today || b.status === 'cancelled';
   });
 
+  $: memberTabs = [
+    { key: 'upcoming', label: 'Upcoming', count: upcomingBookings.length },
+    { key: 'past', label: 'Past', count: pastBookings.length },
+    { key: 'reviews', label: 'Reviews', count: reviews.length },
+    { key: 'reports', label: 'Reports', count: reports.length },
+  ] as { key: 'upcoming' | 'past' | 'reviews' | 'reports'; label: string; count: number }[];
+
   function getStatusBadge(status: string) {
     switch (status) {
-      case 'confirmed': case 'paid': return 'badge-green';
+      case 'paid': return 'badge-green';
       case 'pending': case 'approved': return 'badge-yellow';
       case 'cancelled': return 'badge-red';
       case 'completed': return 'badge-blue';
@@ -203,25 +210,20 @@
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
     <div>
-      <h1 class="text-3xl font-bold text-white">My Dashboard</h1>
-      <p class="text-dark-400 mt-1">Manage your bookings, reviews, and reports</p>
+      <h1 class="text-3xl font-bold text-dark-900">My Dashboard</h1>
+      <p class="text-dark-500 mt-1">Manage your bookings, reviews, and reports</p>
     </div>
     <button on:click={() => openReportModal()} class="btn-secondary text-sm self-start">
       Report Issue
     </button>
   </div>
 
-  <div class="flex gap-1 bg-dark-800 rounded-lg p-1 mb-8 overflow-x-auto">
-    {#each [
-      { key: 'upcoming', label: 'Upcoming', count: upcomingBookings.length },
-      { key: 'past', label: 'Past', count: pastBookings.length },
-      { key: 'reviews', label: 'Reviews', count: reviews.length },
-      { key: 'reports', label: 'Reports', count: reports.length },
-    ] as tab}
+  <div class="flex gap-1 bg-dark-100 border border-dark-200 rounded-lg p-1 mb-8 overflow-x-auto">
+    {#each memberTabs as tab}
       <button
         on:click={() => activeTab = tab.key}
         class="px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap
-          {activeTab === tab.key ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}"
+          {activeTab === tab.key ? 'bg-primary-600 text-white' : 'text-dark-500 hover:text-dark-900 hover:bg-dark-50'}"
       >
         {tab.label} ({tab.count})
       </button>
@@ -232,18 +234,18 @@
     <div class="space-y-4">
       {#each [1, 2, 3] as _}
         <div class="card animate-pulse">
-          <div class="h-20 bg-dark-700 rounded"></div>
+          <div class="h-20 bg-dark-200 rounded"></div>
         </div>
       {/each}
     </div>
   {:else if activeTab === 'upcoming'}
     {#if upcomingBookings.length === 0}
       <div class="card text-center py-12">
-        <svg class="w-12 h-12 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-12 h-12 text-dark-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-        <h3 class="text-lg font-medium text-white mb-2">No upcoming bookings</h3>
-        <p class="text-dark-400 mb-6">You don't have any upcoming bookings.</p>
+        <h3 class="text-lg font-medium text-dark-900 mb-2">No upcoming bookings</h3>
+        <p class="text-dark-500 mb-6">You don't have any upcoming bookings.</p>
         <a href="/#rooms" class="btn-primary">Browse Rooms</a>
       </div>
     {:else}
@@ -253,24 +255,24 @@
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
-                  <h3 class="text-lg font-semibold text-white truncate">{booking.room?.name || 'Unknown Room'}</h3>
+                  <h3 class="text-lg font-semibold text-dark-900 truncate">{booking.room?.name || 'Unknown Room'}</h3>
                   <span class={getStatusBadge(booking.status)}>{booking.status}</span>
                 </div>
-                <p class="text-sm text-dark-400">
+                <p class="text-sm text-dark-500">
                   {formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}
                 </p>
-                <p class="text-sm text-dark-400">
+                <p class="text-sm text-dark-500">
                   {formatDuration(booking.start_time, booking.end_time)} · {booking.room ? formatCurrency(booking.room.price_per_hour) : ''}/hr
                 </p>
               </div>
               <div class="flex items-center gap-2">
                 {#if booking.status === 'pending' || booking.status === 'approved'}
-                  <button on:click={() => openRescheduleModal(booking)} class="text-sm text-primary-400 hover:text-primary-300 px-3 py-1.5 rounded-lg hover:bg-primary-900/20 transition-colors">
+                  <button on:click={() => openRescheduleModal(booking)} class="text-sm text-primary-700 hover:text-primary-600 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
                     Reschedule
                   </button>
                 {/if}
                 {#if booking.status !== 'cancelled'}
-                  <button on:click={() => cancelBooking(booking.id)} class="text-sm text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg hover:bg-red-900/20 transition-colors">
+                  <button on:click={() => cancelBooking(booking.id)} class="text-sm text-red-600 hover:text-red-500 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors">
                     Cancel
                   </button>
                 {/if}
@@ -284,8 +286,8 @@
   {:else if activeTab === 'past'}
     {#if pastBookings.length === 0}
       <div class="card text-center py-12">
-        <h3 class="text-lg font-medium text-white mb-2">No past bookings</h3>
-        <p class="text-dark-400">Your completed and cancelled bookings will appear here.</p>
+        <h3 class="text-lg font-medium text-dark-900 mb-2">No past bookings</h3>
+        <p class="text-dark-500">Your completed and cancelled bookings will appear here.</p>
       </div>
     {:else}
       <div class="space-y-4">
@@ -294,16 +296,16 @@
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
-                  <h3 class="text-lg font-semibold text-white truncate">{booking.room?.name || 'Unknown Room'}</h3>
+                  <h3 class="text-lg font-semibold text-dark-900 truncate">{booking.room?.name || 'Unknown Room'}</h3>
                   <span class={getStatusBadge(booking.status)}>{booking.status}</span>
                 </div>
-                <p class="text-sm text-dark-400">
+                <p class="text-sm text-dark-500">
                   {formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}
                 </p>
               </div>
               <div class="flex items-center gap-2">
-                {#if booking.status === 'completed' || booking.status === 'confirmed' || booking.status === 'paid'}
-                  <button on:click={() => openReviewModal(booking)} class="text-sm text-primary-400 hover:text-primary-300 px-3 py-1.5 rounded-lg hover:bg-primary-900/20 transition-colors">
+                {#if booking.status === 'completed' || booking.status === 'paid'}
+                  <button on:click={() => openReviewModal(booking)} class="text-sm text-primary-700 hover:text-primary-600 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
                     Leave Review
                   </button>
                 {/if}
@@ -317,8 +319,8 @@
   {:else if activeTab === 'reviews'}
     {#if reviews.length === 0}
       <div class="card text-center py-12">
-        <h3 class="text-lg font-medium text-white mb-2">No reviews yet</h3>
-        <p class="text-dark-400">Complete a booking to leave a review.</p>
+        <h3 class="text-lg font-medium text-dark-900 mb-2">No reviews yet</h3>
+        <p class="text-dark-500">Complete a booking to leave a review.</p>
       </div>
     {:else}
       <div class="space-y-4">
@@ -328,16 +330,16 @@
               <div class="flex-shrink-0">
                 <div class="flex items-center gap-0.5">
                   {#each Array(5) as _, i}
-                    <svg class="w-4 h-4 {i < review.rating ? 'text-yellow-400' : 'text-dark-600'}" fill="currentColor" viewBox="0 0 20 20">
+                    <svg class="w-4 h-4 {i < review.rating ? 'text-gold-500' : 'text-dark-300'}" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                     </svg>
                   {/each}
                 </div>
               </div>
               <div class="flex-1">
-                <p class="text-sm text-white font-medium">{review.room?.name || 'Room'}</p>
+                <p class="text-sm text-dark-900 font-medium">{review.room?.name || 'Room'}</p>
                 {#if review.comment}
-                  <p class="text-sm text-dark-300 mt-1">{review.comment}</p>
+                  <p class="text-sm text-dark-700 mt-1">{review.comment}</p>
                 {/if}
                 <p class="text-xs text-dark-500 mt-2">{formatDate(review.created_at)}</p>
               </div>
@@ -350,8 +352,8 @@
   {:else if activeTab === 'reports'}
     {#if reports.length === 0}
       <div class="card text-center py-12">
-        <h3 class="text-lg font-medium text-white mb-2">No reports</h3>
-        <p class="text-dark-400 mb-6">You haven't submitted any reports yet.</p>
+        <h3 class="text-lg font-medium text-dark-900 mb-2">No reports</h3>
+        <p class="text-dark-500 mb-6">You haven't submitted any reports yet.</p>
         <button on:click={() => openReportModal()} class="btn-primary">Submit a Report</button>
       </div>
     {:else}
@@ -361,14 +363,14 @@
             <div class="flex items-start justify-between gap-4">
               <div class="flex-1">
                 <div class="flex items-center gap-2 mb-1">
-                  <h3 class="font-semibold text-white">{report.subject}</h3>
+                  <h3 class="font-semibold text-dark-900">{report.subject}</h3>
                   <span class={getReportStatusBadge(report.status)}>{report.status.replace('_', ' ')}</span>
                 </div>
-                <p class="text-sm text-dark-400 line-clamp-2">{report.description}</p>
+                <p class="text-sm text-dark-600 line-clamp-2">{report.description}</p>
                 {#if report.admin_response}
-                  <div class="mt-3 p-3 bg-dark-700/50 rounded-lg">
+                  <div class="mt-3 p-3 bg-dark-100 border border-dark-200 rounded-lg">
                     <p class="text-xs text-dark-500 mb-1">Admin Response:</p>
-                    <p class="text-sm text-dark-300">{report.admin_response}</p>
+                    <p class="text-sm text-dark-700">{report.admin_response}</p>
                   </div>
                 {/if}
                 <p class="text-xs text-dark-500 mt-2">{formatDate(report.created_at)}</p>
@@ -385,17 +387,17 @@
 <Modal isOpen={showReviewModal} title="Leave a Review" on:close={() => showReviewModal = false}>
   {#if reviewBooking}
     <form on:submit|preventDefault={submitReview} class="space-y-4">
-      <div class="bg-dark-800 rounded-lg p-3">
-        <p class="text-sm text-dark-400">{reviewBooking.room?.name}</p>
-        <p class="text-sm text-white">{formatDate(reviewBooking.date)}</p>
+      <div class="bg-dark-50 border border-dark-200 rounded-lg p-3">
+        <p class="text-sm text-dark-600">{reviewBooking.room?.name}</p>
+        <p class="text-sm text-dark-900">{formatDate(reviewBooking.date)}</p>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-dark-200 mb-2">Rating</label>
-        <div class="flex gap-1">
+        <span class="block text-sm font-medium text-dark-700 mb-2">Rating</span>
+        <div class="flex gap-1" role="radiogroup" aria-label="Rating">
           {#each [1, 2, 3, 4, 5] as star}
-            <button type="button" on:click={() => reviewRating = star} class="p-0.5">
-              <svg class="w-8 h-8 {star <= reviewRating ? 'text-yellow-400' : 'text-dark-600'}" fill="currentColor" viewBox="0 0 20 20">
+            <button type="button" role="radio" aria-checked={reviewRating === star} aria-label={`${star} star${star > 1 ? 's' : ''}`} on:click={() => reviewRating = star} class="p-0.5">
+              <svg class="w-8 h-8 {star <= reviewRating ? 'text-gold-500' : 'text-dark-300'}" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
             </button>
@@ -404,8 +406,8 @@
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-dark-200 mb-1">Comment <span class="text-dark-500">(optional)</span></label>
-        <textarea bind:value={reviewComment} class="input" rows="3" placeholder="Share your experience..."></textarea>
+        <label for="review-comment" class="block text-sm font-medium text-dark-700 mb-1">Comment <span class="text-dark-500">(optional)</span></label>
+        <textarea id="review-comment" bind:value={reviewComment} class="input" rows="3" placeholder="Share your experience..."></textarea>
       </div>
 
       <div class="flex gap-3 pt-2">
@@ -422,13 +424,13 @@
 <Modal isOpen={showReportModal} title="Submit a Report" on:close={() => showReportModal = false}>
   <form on:submit|preventDefault={submitReport} class="space-y-4">
     <div>
-      <label class="block text-sm font-medium text-dark-200 mb-1">Subject</label>
-      <input type="text" bind:value={reportSubject} class="input" placeholder="Brief description of the issue" required />
+      <label for="report-subject" class="block text-sm font-medium text-dark-700 mb-1">Subject</label>
+      <input id="report-subject" type="text" bind:value={reportSubject} class="input" placeholder="Brief description of the issue" required />
     </div>
 
     <div>
-      <label class="block text-sm font-medium text-dark-200 mb-1">Description</label>
-      <textarea bind:value={reportDescription} class="input" rows="4" placeholder="Please provide details about your issue..." required></textarea>
+      <label for="report-description" class="block text-sm font-medium text-dark-700 mb-1">Description</label>
+      <textarea id="report-description" bind:value={reportDescription} class="input" rows="4" placeholder="Please provide details about your issue..." required></textarea>
     </div>
 
     <div class="flex gap-3 pt-2">
@@ -444,19 +446,19 @@
 <Modal isOpen={showRescheduleModal} title="Reschedule Booking" on:close={() => showRescheduleModal = false}>
   {#if rescheduleBooking}
     <form on:submit|preventDefault={submitReschedule} class="space-y-4">
-      <div class="bg-dark-800 rounded-lg p-3">
-        <p class="text-sm text-dark-400">{rescheduleBooking.room?.name}</p>
-        <p class="text-sm text-white">Currently: {formatDate(rescheduleBooking.date)}</p>
+      <div class="bg-dark-50 border border-dark-200 rounded-lg p-3">
+        <p class="text-sm text-dark-600">{rescheduleBooking.room?.name}</p>
+        <p class="text-sm text-dark-900">Currently: {formatDate(rescheduleBooking.date)}</p>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-dark-200 mb-1">New Date</label>
-        <input type="date" bind:value={rescheduleDate} class="input" required />
+        <label for="reschedule-date" class="block text-sm font-medium text-dark-700 mb-1">New Date</label>
+        <input id="reschedule-date" type="date" bind:value={rescheduleDate} class="input" required />
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-dark-200 mb-1">New Start Time</label>
-        <input type="time" bind:value={rescheduleTime} class="input" required />
+        <label for="reschedule-time" class="block text-sm font-medium text-dark-700 mb-1">New Start Time</label>
+        <input id="reschedule-time" type="time" bind:value={rescheduleTime} class="input" required />
       </div>
 
       <p class="text-xs text-dark-500">

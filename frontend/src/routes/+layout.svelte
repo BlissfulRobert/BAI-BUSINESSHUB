@@ -11,7 +11,6 @@
   $: currentPath = $page.url.pathname;
   $: isLoggedIn = !!$user;
   $: isAdmin = $profile?.role === "admin";
-  $: isClient = $profile?.role === "client";
   $: isHome = currentPath === "/";
 
   onMount(async () => {
@@ -72,26 +71,24 @@
   }
 
   const navLinks = [
-    navLink("/#rooms", "Rooms"),
-    // navLink('/#plans', 'Plans'),
-    // navLink('/#about', 'About'),
-    // navLink('/#gallery', 'Gallery'),
-    // navLink('/#location', 'Location'),
+    navLink("/", "Home"),
+    navLink("/#rooms", "Meeting spaces"),
+    navLink("/#about", "About us"),
   ];
 </script>
 
 <div class="min-h-screen flex flex-col">
   <header
-    class="border-b border-dark-800/50 bg-white backdrop-blur-xl sticky top-0 z-50"
+    class="border-b border-dark-200 bg-white backdrop-blur-xl sticky top-0 z-50"
   >
     <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16 relative">
+      <div class="flex items-center justify-between h-20 relative">
         <div class="flex items-center gap-10 flex-1">
-          <a href="/">
+          <a href="/" class="flex items-center">
             <img
-              src="/bai-business-logo.png"
+              src="/bai-business-logo-wide.png"
               alt="BAI Business Hub"
-              class="h-auto max-w-[250px] mt-10"
+              class="h-20 w-auto max-w-[360px]"
             />
           </a>
           <div
@@ -100,7 +97,11 @@
             {#each navLinks as link}
               <a
                 href={link.path}
-                class="px-3 py-2 rounded-lg text-sm font-medium text-white bg-blue-950 transition-colors"
+                class={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  link.active
+                    ? "text-primary-700 bg-primary-50"
+                    : "text-dark-500 hover:text-primary-700 hover:bg-dark-100"
+                }`}
               >
                 {link.label}
               </a>
@@ -110,26 +111,24 @@
 
         <div class="hidden lg:flex items-center gap-3">
           {#if $isLoading}
-            <div class="w-20 h-8 bg-dark-700 rounded animate-pulse"></div>
+            <div class="w-20 h-8 bg-dark-200 rounded animate-pulse"></div>
           {:else if isLoggedIn}
             {#if isAdmin}
               <a
                 href="/admin"
-                class="px-3 py-2 text-sm text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-dark-800"
+                class="px-3 py-2 text-sm text-dark-500 hover:text-primary-700 transition-colors rounded-lg hover:bg-dark-100"
               >
                 Admin
               </a>
             {/if}
-            {#if isClient}
-              <a
-                href="/member"
-                class="px-3 py-2 text-sm text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-dark-800"
-              >
-                My Bookings
-              </a>
-            {/if}
-            <div class="w-px h-6 bg-dark-700"></div>
-            <span class="text-sm text-dark-400 max-w-[120px] truncate">
+            <a
+              href="/member"
+              class="px-3 py-2 text-sm text-dark-500 hover:text-primary-700 transition-colors rounded-lg hover:bg-dark-100"
+            >
+              My Bookings
+            </a>
+            <div class="w-px h-6 bg-dark-300"></div>
+            <span class="text-sm text-dark-600 max-w-[120px] truncate">
               {$profile?.full_name || $user?.email}
             </span>
             <button
@@ -141,19 +140,19 @@
           {:else}
             <a
               href="/auth/login"
-              class="px-3 py-2 text-sm text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-dark-800"
+              class="px-3 py-2 text-sm text-dark-500 hover:text-primary-700 transition-colors rounded-lg hover:bg-dark-100"
             >
               Login
             </a>
-            <a href="/auth/register" class="btn-primary text-sm px-4 py-1.5">
-              Get Started
-            </a>
           {/if}
+          <a href="/#rooms" class="btn-primary text-sm px-4 py-1.5">
+            Book a room
+          </a>
         </div>
 
         <button
           on:click={toggleMobileMenu}
-          class="lg:hidden p-2 text-dark-400 hover:text-white rounded-lg hover:bg-dark-800 transition-colors"
+          class="lg:hidden p-2 text-dark-500 hover:text-primary-700 rounded-lg hover:bg-dark-100 transition-colors"
         >
           <svg
             class="w-6 h-6"
@@ -183,7 +182,7 @@
 
     {#if mobileMenuOpen}
       <div
-        class="lg:hidden border-t border-dark-800 bg-dark-900/95 backdrop-blur-xl"
+        class="lg:hidden border-t border-dark-200 bg-white backdrop-blur-xl"
       >
         <div class="px-4 py-4 space-y-1">
           {#each navLinks as link}
@@ -192,33 +191,41 @@
               on:click={closeMobileMenu}
               class="block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                 {link.active
-                ? 'text-white bg-dark-800'
-                : 'text-dark-400 hover:text-white hover:bg-dark-800/50'}"
+                ? 'text-primary-700 bg-primary-50'
+                : 'text-dark-500 hover:text-primary-700 hover:bg-dark-100'}"
             >
               {link.label}
             </a>
           {/each}
-          <hr class="border-dark-700 my-2" />
+          <a
+            href="/#rooms"
+            on:click={closeMobileMenu}
+            class="block px-3 py-2.5 rounded-lg text-sm font-medium text-primary-600 hover:text-primary-700 hover:bg-dark-100"
+          >
+            Book a room
+          </a>
+          <hr class="border-dark-200 my-2" />
           {#if isLoggedIn}
             {#if isAdmin}
               <a
                 href="/admin"
                 on:click={closeMobileMenu}
-                class="block px-3 py-2.5 text-sm text-dark-400 hover:text-white hover:bg-dark-800/50 rounded-lg"
+                class="block px-3 py-2.5 text-sm text-dark-500 hover:text-primary-700 hover:bg-dark-100 rounded-lg"
                 >Admin Panel</a
               >
             {/if}
-            {#if isClient}
-              <a
-                href="/member"
-                on:click={closeMobileMenu}
-                class="block px-3 py-2.5 text-sm text-dark-400 hover:text-white hover:bg-dark-800/50 rounded-lg"
-                >My Bookings</a
-              >
-            {/if}
+            <a
+              href="/member"
+              on:click={closeMobileMenu}
+              class="block px-3 py-2.5 text-sm text-dark-500 hover:text-primary-700 hover:bg-dark-100 rounded-lg"
+              >My Bookings</a
+            >
+            <p class="px-3 pt-1 text-sm text-dark-600 truncate">
+              {$profile?.full_name || $user?.email}
+            </p>
             <button
               on:click={handleLogout}
-              class="w-full text-left px-3 py-2.5 text-sm text-dark-400 hover:text-white hover:bg-dark-800/50 rounded-lg"
+              class="w-full text-left px-3 py-2.5 text-sm text-dark-500 hover:text-primary-700 hover:bg-dark-100 rounded-lg"
             >
               Logout
             </button>
@@ -226,13 +233,13 @@
             <a
               href="/auth/login"
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 text-sm text-dark-400 hover:text-white hover:bg-dark-800/50 rounded-lg"
+              class="block px-3 py-2.5 text-sm text-dark-500 hover:text-primary-700 hover:bg-dark-100 rounded-lg"
               >Login</a
             >
             <a
               href="/auth/register"
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 text-sm text-primary-400 hover:text-primary-300 hover:bg-dark-800/50 rounded-lg font-medium"
+              class="block px-3 py-2.5 text-sm text-primary-600 hover:text-primary-700 hover:bg-dark-100 rounded-lg font-medium"
               >Get Started</a
             >
           {/if}
@@ -245,7 +252,7 @@
     <slot />
   </main>
 
-  <footer class="border-t border-dark-800 bg-dark-950">
+  <footer class="border-t border-primary-900 bg-primary-950">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
         <div>
@@ -348,7 +355,7 @@
           <ul class="space-y-2.5 text-sm text-dark-400">
             <li class="flex items-start gap-2">
               <svg
-                class="w-4 h-4 text-primary-400 mt-0.5 flex-shrink-0"
+                class="w-4 h-4 text-gold-500 mt-0.5 flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -370,7 +377,7 @@
             </li>
             <li class="flex items-center gap-2">
               <svg
-                class="w-4 h-4 text-primary-400 flex-shrink-0"
+                class="w-4 h-4 text-gold-500 flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -386,7 +393,7 @@
             </li>
             <li class="flex items-center gap-2">
               <svg
-                class="w-4 h-4 text-primary-400 flex-shrink-0"
+                class="w-4 h-4 text-gold-500 flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -405,17 +412,17 @@
       </div>
 
       <div
-        class="mt-12 pt-8 border-t border-dark-800 flex flex-col sm:flex-row items-center justify-between gap-4"
+        class="mt-12 pt-8 border-t border-primary-800 flex flex-col sm:flex-row items-center justify-between gap-4"
       >
-        <p class="text-sm text-dark-500">
+        <p class="text-sm text-primary-100">
           &copy; {new Date().getFullYear()} BAI Business Hub. All rights reserved.
         </p>
         <div class="flex items-center gap-4">
-          <span class="text-xs text-dark-600">On-site payment</span>
-          <span class="text-dark-700">·</span>
-          <span class="text-xs text-dark-600">Non-refundable</span>
-          <span class="text-dark-700">·</span>
-          <span class="text-xs text-dark-600">Cancel anytime</span>
+          <span class="text-xs text-primary-200">On-site payment</span>
+          <span class="text-gold-500">·</span>
+          <span class="text-xs text-primary-200">Non-refundable</span>
+          <span class="text-gold-500">·</span>
+          <span class="text-xs text-primary-200">Cancel anytime</span>
         </div>
       </div>
     </div>

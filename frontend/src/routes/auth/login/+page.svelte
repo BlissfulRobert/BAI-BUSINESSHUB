@@ -45,19 +45,19 @@
 <div class="min-h-[80vh] flex items-center justify-center py-12 px-4">
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
-      <h1 class="text-3xl font-bold text-white">Welcome Back</h1>
-      <p class="text-dark-400 mt-2">Sign in to your account</p>
+      <h1 class="text-3xl font-bold text-dark-900">Welcome Back</h1>
+      <p class="text-dark-500 mt-2">Sign in to your account</p>
     </div>
 
     <form on:submit|preventDefault={handleLogin} class="card space-y-6">
       {#if error}
-        <div class="bg-red-900/30 border border-red-800 rounded-lg p-4 text-sm text-red-300">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
           {error}
         </div>
       {/if}
 
       <div>
-        <label for="email" class="block text-sm font-medium text-dark-200 mb-2">Email</label>
+        <label for="email" class="block text-sm font-medium text-dark-700 mb-2">Email</label>
         <input
           id="email"
           type="email"
@@ -69,7 +69,7 @@
       </div>
 
       <div>
-        <label for="password" class="block text-sm font-medium text-dark-200 mb-2">Password</label>
+        <label for="password" class="block text-sm font-medium text-dark-700 mb-2">Password</label>
         <input
           id="password"
           type="password"
@@ -82,10 +82,10 @@
 
       <div class="flex items-center justify-between text-sm">
         <label class="flex items-center gap-2">
-          <input type="checkbox" class="w-4 h-4 rounded bg-dark-700 border-dark-600 text-primary-600 focus:ring-primary-500" />
-          <span class="text-dark-400">Remember me</span>
+          <input type="checkbox" class="w-4 h-4 rounded bg-white border-dark-300 text-primary-600 focus:ring-primary-500" />
+          <span class="text-dark-600">Remember me</span>
         </label>
-        <a href="/auth/reset-password" class="text-primary-400 hover:text-primary-300">Forgot password?</a>
+        <a href="/auth/reset-password" class="text-primary-700 hover:text-primary-600">Forgot password?</a>
       </div>
 
       <button type="submit" disabled={loading} class="btn-primary w-full py-3">
@@ -102,9 +102,9 @@
         {/if}
       </button>
 
-      <p class="text-center text-sm text-dark-400">
+      <p class="text-center text-sm text-dark-600">
         Don't have an account?
-        <a href="/auth/register" class="text-primary-400 hover:text-primary-300">Register here</a>
+        <a href="/auth/register" class="text-primary-700 hover:text-primary-600">Register here</a>
       </p>
     </form>
   </div>

@@ -25,6 +25,8 @@
   },
   "type": "module",
   "dependencies": {
+    "@fontsource/inter": "^5.0.0",
+    "@fontsource/poppins": "^5.0.0",
     "@supabase/supabase-js": "^2.39.0",
     "leaflet": "^1.9.4"
   }
