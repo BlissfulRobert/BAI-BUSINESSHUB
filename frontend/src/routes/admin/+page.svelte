@@ -196,9 +196,9 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold text-dark-900">Admin Dashboard</h1>
-    <p class="text-dark-500 mt-2">Manage bookings, rooms, members, and content</p>
+  <div class="mb-8 bg-gradient-to-r from-primary-700 to-primary-900 rounded-2xl px-8 py-8">
+    <h1 class="text-3xl font-bold text-white">Admin Dashboard</h1>
+    <p class="text-primary-100 mt-2">Manage bookings, rooms, members, and content</p>
   </div>
 
   <!-- Stats Cards -->
