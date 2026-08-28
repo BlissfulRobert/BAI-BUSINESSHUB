@@ -208,12 +208,12 @@
 </svelte:head>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8 bg-gradient-to-r from-primary-700 to-primary-900 rounded-2xl px-8 py-8">
     <div>
-      <h1 class="text-3xl font-bold text-dark-900">My Dashboard</h1>
-      <p class="text-dark-500 mt-1">Manage your bookings, reviews, and reports</p>
+      <h1 class="text-3xl font-bold text-white">My Dashboard</h1>
+      <p class="text-primary-100 mt-1">Manage your bookings, reviews, and reports</p>
     </div>
-    <button on:click={() => openReportModal()} class="btn-secondary text-sm self-start">
+    <button on:click={() => openReportModal()} class="text-sm self-start bg-white text-primary-700 hover:bg-primary-50 font-medium px-4 py-2 rounded-lg transition-colors duration-200">
       Report Issue
     </button>
   </div>

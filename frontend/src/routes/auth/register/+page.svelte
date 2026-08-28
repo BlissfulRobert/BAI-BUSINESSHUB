@@ -1,7 +1,10 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { supabase } from '$lib/supabase/client';
   import { validateEmail } from '$lib/utils/validation';
+
+  $: returnTo = $page.url.searchParams.get('returnTo') || '/#rooms';
 
   let fullName = '';
   let email = '';
@@ -65,7 +68,7 @@
     }
 
     loading = false;
-    goto('/auth/login?registered=true');
+    goto(`/auth/login?registered=true&returnTo=${encodeURIComponent(returnTo)}`);
   }
 </script>
 
@@ -73,11 +76,11 @@
   <title>Register - BAI Business Hub</title>
 </svelte:head>
 
-<div class="min-h-[80vh] flex items-center justify-center py-12 px-4">
+<div class="min-h-[80vh] flex items-center justify-center py-12 px-4 bg-gradient-to-br from-primary-800 via-primary-700 to-primary-900">
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
-      <h1 class="text-3xl font-bold text-dark-900">Create Account</h1>
-      <p class="text-dark-500 mt-2">Join BAI Business Hub today</p>
+      <h1 class="text-3xl font-bold text-white">Create Account</h1>
+      <p class="text-primary-200 mt-2">Join BAI Business Hub today</p>
     </div>
 
     <form on:submit|preventDefault={handleRegister} class="card space-y-6">
@@ -163,7 +166,7 @@
 
       <p class="text-center text-sm text-dark-600">
         Already have an account?
-        <a href="/auth/login" class="text-primary-700 hover:text-primary-600">Sign in</a>
+        <a href={`/auth/login?returnTo=${encodeURIComponent(returnTo)}`} class="text-primary-700 hover:text-primary-600">Sign in</a>
       </p>
     </form>
   </div>

@@ -362,7 +362,7 @@
 	{#if room}
 
 		<!-- Room context strip (kept small so every step fits the viewport) -->
-		<div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dark-200 bg-dark-50 px-4 py-3">
+		<div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary-100 bg-primary-50 px-4 py-3">
 			<div class="flex min-w-0 items-center gap-3">
 				{#if room.images?.[0]}
 					<img
@@ -381,9 +381,9 @@
 				</div>
 			</div>
 			{#if selectedPlan}
-				<span class="rounded-full bg-dark-200 px-3 py-1 text-xs text-dark-600">
-					{selectedPlan.name} · {selectedPlan.duration_label}
-				</span>
+			<span class="rounded-full bg-primary-100 px-3 py-1 text-xs text-primary-800">
+				{selectedPlan.name} · {selectedPlan.duration_label}
+			</span>
 			{/if}
 		</div>
 
@@ -392,7 +392,7 @@
 			{#each stepTitles as title, i}
 				{@const stepNum = i + 1}
 				{#if i > 0}
-					<span class="h-px flex-1 bg-dark-200"></span>
+					<span class="h-px flex-1 bg-primary-100"></span>
 				{/if}
 				<button
 					type="button"
@@ -485,7 +485,7 @@
 					/>
 
 					{#if isSeriesPlan && seriesDates.length > 1}
-						<div class="mt-4 rounded-xl border border-dark-200 bg-dark-50 p-4">
+						<div class="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-4">
 							<p class="flex flex-wrap items-baseline gap-x-2 text-sm text-dark-600">
 								<span class="font-medium">
 									{selectedPlan?.slug === 'weekly' ? 'Weekdays' : 'Daily block'}:
@@ -572,7 +572,7 @@
 					</div>
 
 					{#if bookingDuration}
-						<div class="mt-4 inline-flex items-center rounded-lg bg-dark-100 border border-dark-200 px-3 py-2 text-sm text-dark-600">
+						<div class="mt-4 inline-flex items-center rounded-lg bg-primary-50 border border-primary-100 px-3 py-2 text-sm text-primary-800">
 							Duration:
 							<span class="ml-1.5 font-semibold text-dark-900">{bookingDuration}</span>
 						</div>
@@ -586,7 +586,7 @@
 
 
 				<!-- Details -->
-				<div class="space-y-4 rounded-xl border border-dark-200 bg-dark-50 p-5">
+				<div class="space-y-4 rounded-xl border border-primary-100 bg-primary-50 p-5">
 					<h3 class="text-sm font-semibold text-dark-900">Your Details</h3>
 
 					<div>
@@ -657,7 +657,7 @@
 
 		<!-- STEP 3: Review & Confirm -->
 		{#if step === 3}
-			<div class="rounded-xl border border-dark-200 bg-dark-50 p-5">
+			<div class="rounded-xl border border-primary-100 bg-primary-50 p-5">
 				<h3 class="mb-4 text-sm font-semibold text-dark-900">Review your booking</h3>
 
 				<div class="space-y-3 text-sm">
