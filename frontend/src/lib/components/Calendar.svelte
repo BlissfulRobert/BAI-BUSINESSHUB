@@ -70,28 +70,28 @@
   $: monthLabel = currentMonth.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
 </script>
 
-<div class="card">
-  <div class="flex items-center justify-between mb-4">
-    <button on:click={prevMonth} class="p-2 hover:bg-dark-700 rounded-lg transition-colors">
-      <svg class="w-5 h-5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<div class="card p-2.5">
+  <div class="flex items-center justify-between mb-3">
+    <button on:click={prevMonth} class="p-1.5 hover:bg-dark-700 rounded-lg transition-colors">
+      <svg class="w-4 h-4 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
       </svg>
     </button>
     <h3 class="text-sm font-medium text-white">{monthLabel}</h3>
-    <button on:click={nextMonth} class="p-2 hover:bg-dark-700 rounded-lg transition-colors">
-      <svg class="w-5 h-5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <button on:click={nextMonth} class="p-1.5 hover:bg-dark-700 rounded-lg transition-colors">
+      <svg class="w-4 h-4 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
       </svg>
     </button>
   </div>
 
-  <div class="grid grid-cols-7 gap-1 mb-2">
+  <div class="grid grid-cols-7 gap-0.5 mb-1">
     {#each ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as day}
-      <div class="text-center text-xs font-medium text-dark-500 py-2">{day}</div>
+      <div class="text-center text-xs font-medium text-dark-500 py-1">{day}</div>
     {/each}
   </div>
 
-  <div class="grid grid-cols-7 gap-1">
+  <div class="grid grid-cols-7 gap-0.5">
     {#each calendarDays as date}
       {@const disabled = isDateDisabled(date)}
       {@const selected = isSelected(date)}
@@ -99,7 +99,7 @@
       <button
         on:click={() => selectDate(date)}
         disabled={disabled}
-        class="aspect-square flex items-center justify-center text-sm rounded-lg transition-all duration-200
+        class="h-7 flex items-center justify-center text-xs rounded-md transition-all duration-200
           {selected
             ? 'bg-primary-600 text-white font-medium'
             : today

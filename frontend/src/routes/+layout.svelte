@@ -100,7 +100,7 @@
             {#each navLinks as link}
               <a
                 href={link.path}
-                class="px-3 py-2 rounded-lg text-sm font-medium text-white bg-blue-950 transition-colors"
+                class="px-3 py-2 rounded-lg text-sm font-medium text-white bg-blue-800 transition-colors"
               >
                 {link.label}
               </a>
@@ -245,7 +245,7 @@
     <slot />
   </main>
 
-  <footer class="border-t border-dark-800 bg-dark-950">
+  <footer class="border-t border-dark-800 bg-dark-800">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
         <div>

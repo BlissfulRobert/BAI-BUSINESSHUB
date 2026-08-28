@@ -171,72 +171,76 @@
     <a href="/" class="btn-primary">Back to Home</a>
   </div>
 {:else}
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-    <a href="/" class="inline-flex items-center gap-2 text-sm text-dark-400 hover:text-white mb-6 transition-colors">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 overflow-hidden">
+    <a href="/" class="inline-flex items-center gap-2 text-sm text-dark-400 hover:text-white mb-1 transition-colors">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
       </svg>
       Back to Rooms
     </a>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div class="lg:col-span-2 space-y-8">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 min-h-[calc(100vh-70px)]">
+      <div class="lg:col-span-3 flex flex-col gap-3">
         <div>
-          <h1 class="text-3xl font-bold text-white mb-2">{room.name}</h1>
-          <p class="text-dark-400">{room.layout} · {room.capacity} seats</p>
+          <h1 class="text-xl font-bold text-white leading-tight">{room.name}</h1>
+          <p class="text-dark-400 text-sm">{room.layout} · {room.capacity} seats</p>
         </div>
 
-        <div class="aspect-video bg-dark-800 rounded-xl overflow-hidden">
-          {#if room.images && room.images.length > 0}
-            <img src={room.images[0]} alt={room.name} class="w-full h-full object-cover" />
-          {:else}
-            <div class="w-full h-full flex items-center justify-center">
-              <svg class="w-16 h-16 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
-          {/if}
+        <div class="bg-dark-800 rounded-xl overflow-hidden h-36">
+          <img src="/{room.name.toLowerCase().includes('meeting') ? 'meeting' : 'office'}.png" alt={room.name} class="w-full h-full object-cover" />
         </div>
 
-        <div class="card">
-          <h2 class="text-xl font-semibold text-white mb-4">About This Room</h2>
-          <p class="text-dark-300 leading-relaxed">{room.description}</p>
+        <div class="card p-3 flex-1 overflow-hidden">
+          <p class="text-dark-300 leading-snug text-sm line-clamp-4">{room.description}</p>
         </div>
 
-        <div class="card">
-          <h2 class="text-xl font-semibold text-white mb-4">Amenities</h2>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {#each room.amenities as amenity}
-              <div class="flex items-center gap-2 text-dark-300">
-                <svg class="w-5 h-5 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                <span class="text-sm">{amenity}</span>
-              </div>
-            {/each}
-          </div>
-        </div>
-
-        {#if room.equipment && room.equipment.length > 0}
-          <div class="card">
-            <h2 class="text-xl font-semibold text-white mb-4">Equipment</h2>
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {#each room.equipment as item}
-                <div class="flex items-center gap-2 text-dark-300">
-                  <svg class="w-5 h-5 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="grid grid-cols-3 gap-3">
+          <div class="card p-3">
+            <h2 class="text-sm font-semibold text-white mb-1.5">Amenities</h2>
+            <div class="space-y-1 overflow-hidden">
+              {#each room.amenities as amenity}
+                <div class="flex items-center gap-1.5 text-dark-300">
+                  <svg class="w-3.5 h-3.5 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  <span class="text-sm">{item}</span>
+                  <span class="text-xs">{amenity}</span>
                 </div>
               {/each}
             </div>
           </div>
-        {/if}
+
+          {#if room.equipment && room.equipment.length > 0}
+            <div class="card p-3">
+              <h2 class="text-sm font-semibold text-white mb-1.5">Equipment</h2>
+              <div class="space-y-1 overflow-hidden">
+                {#each room.equipment as item}
+                  <div class="flex items-center gap-1.5 text-dark-300">
+                    <svg class="w-3.5 h-3.5 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span class="text-xs">{item}</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <div class="card p-3">
+            <h2 class="text-sm font-semibold text-white mb-1.5">Location</h2>
+            <div class="flex items-start gap-1.5 text-dark-300">
+              <svg class="w-3.5 h-3.5 text-primary-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span class="text-xs">BAI Business Hub</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="space-y-6">
-        <div class="card sticky top-24">
-          <div class="mb-6">
+      <div class="lg:col-span-2">
+        <div class="card sticky top-20 p-3 overflow-y-auto max-h-[calc(100vh-88px)]">
+          <div class="mb-4">
             <div class="flex items-baseline gap-2">
               <span class="text-3xl font-bold text-primary-400">{formatCurrency(room.price_per_hour)}</span>
               <span class="text-dark-400">/hour</span>
@@ -245,17 +249,17 @@
 
           <!-- Booking Mode Toggle -->
           {#if plans.length > 0}
-            <div class="flex gap-1 bg-dark-700 rounded-lg p-1 mb-6">
+            <div class="flex gap-1 bg-dark-700 rounded-lg p-1 mb-4">
               <button
                 on:click={() => { bookingMode = 'hourly'; selectedPlan = null; }}
-                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors
+                class="flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors
                   {bookingMode === 'hourly' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}"
               >
                 Hourly
               </button>
               <button
                 on:click={() => bookingMode = 'plan'}
-                class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors
+                class="flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors
                   {bookingMode === 'plan' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}"
               >
                 Plans
@@ -297,8 +301,8 @@
             <Calendar selectedDate={selectedDate} on:select={handleDateSelect} />
 
             {#if selectedDate}
-              <div class="mt-6">
-                <p class="text-sm text-dark-400 mb-3">{formatDate(selectedDate)}</p>
+              <div class="mt-4">
+                <p class="text-sm text-dark-400 mb-2">{formatDate(selectedDate)}</p>
                 <TimeSlotPicker
                   selectedDate={selectedDate}
                   selectedTime={selectedTime}
@@ -309,7 +313,7 @@
             {/if}
 
             {#if selectedTime}
-              <div class="mt-6 space-y-4">
+              <div class="mt-4 space-y-3">
                 <div>
                   <label class="block text-sm font-medium text-dark-200 mb-2">Duration</label>
                   <div class="grid grid-cols-4 gap-2">

@@ -7,19 +7,11 @@
 
 <a href="/rooms/{room.slug}" class="card group hover:border-primary-600/50 transition-all duration-300">
   <div class="aspect-video bg-dark-700 rounded-lg overflow-hidden mb-4 relative">
-    {#if room.images && room.images.length > 0}
-      <img
-        src={room.images[0]}
-        alt={room.name}
-        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-      />
-    {:else}
-      <div class="w-full h-full flex items-center justify-center">
-        <svg class="w-12 h-12 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
-      </div>
-    {/if}
+    <img
+      src="/{room.name.toLowerCase().includes('meeting') ? 'meeting' : 'office'}.png"
+      alt={room.name}
+      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+    />
     <div class="absolute top-3 right-3">
       <span class="badge-blue">{room.capacity} seats</span>
     </div>

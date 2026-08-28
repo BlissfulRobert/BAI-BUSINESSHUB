@@ -40,7 +40,7 @@
 
 <!-- ==================== HERO SECTION ==================== -->
 <section class="relative min-h-[90vh] flex items-center overflow-hidden">
-  <div class="absolute inset-0 bg-gradient-to-br from-dark-950 via-dark-900 to-primary-950/30"></div>
+  <div class="absolute inset-0 bg-gradient-to-br from-dark-800 via-dark-700 to-primary-800/30"></div>
   <div class="absolute top-0 right-0 w-[600px] h-[600px] bg-primary-600/8 rounded-full blur-3xl"></div>
   <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary-400/5 rounded-full blur-3xl"></div>
 
@@ -85,18 +85,7 @@
 
       <div class="relative hidden lg:block">
         <div class="aspect-[4/3] bg-dark-800 rounded-2xl overflow-hidden border border-dark-700 shadow-2xl">
-          {#if rooms.length > 0 && rooms[0].images && rooms[0].images.length > 0}
-            <img src={rooms[0].images[0]} alt={rooms[0].name} class="w-full h-full object-cover" />
-          {:else}
-            <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-dark-800 to-dark-900">
-              <div class="text-center">
-                <svg class="w-20 h-20 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-                <p class="text-dark-500">Premium Meeting Space</p>
-              </div>
-            </div>
-          {/if}
+          <img src="/office.png" alt="BAI Business Hub" class="w-full h-full object-cover" />
         </div>
         <div class="absolute -bottom-6 -left-6 bg-dark-800 border border-dark-700 rounded-xl p-4 shadow-xl">
           <div class="flex items-center gap-3">
@@ -117,7 +106,7 @@
 </section>
 
 <!-- ==================== ROOMS SECTION ==================== -->
-<section id="rooms" class="py-24 bg-dark-900/30">
+<section id="rooms" class="py-24 bg-dark-700/50">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="text-center mb-16">
       <span class="text-primary-400 text-sm font-semibold uppercase tracking-wider">Our Spaces</span>
@@ -176,7 +165,7 @@
 </section>
 
 <!-- ==================== ABOUT / WHY CHOOSE US ==================== -->
-<section id="about" class="py-24 bg-dark-900/30">
+<section id="about" class="py-24 bg-dark-700/50">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
       <div>
@@ -301,7 +290,7 @@
 </section>
 
 <!-- ==================== MAP / LOCATION SECTION ==================== -->
-<section id="location" class="py-24 bg-dark-900/30">
+<section id="location" class="py-24 bg-dark-700/50">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
       <div>

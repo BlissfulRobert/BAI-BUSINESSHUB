@@ -8,7 +8,7 @@
 
   const dispatch = createEventDispatcher();
 
-  const timeSlots = generateTimeSlots(8, 18, 30);
+  const timeSlots = generateTimeSlots(9, 17, 30);
 
   function selectTime(slot: string) {
     if (!bookedSlots.includes(slot)) {
@@ -32,12 +32,12 @@
 <div class="space-y-4">
   <div>
     <label class="block text-sm font-medium text-dark-200 mb-2">Select Time</label>
-    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-4 lg:grid-cols-6 gap-2">
+    <div class="grid grid-cols-4 gap-1.5 max-h-24 overflow-y-auto">
       {#each timeSlots as slot}
         <button
           on:click={() => selectTime(slot)}
           disabled={isBooked(slot)}
-          class="px-3 py-2 text-sm rounded-lg border transition-all duration-200
+          class="px-1.5 py-1 text-xs rounded border transition-all duration-200
             {selectedTime === slot
               ? 'bg-primary-600 border-primary-600 text-white'
               : isBooked(slot)
