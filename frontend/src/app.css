@@ -44,7 +44,7 @@
   }
 
   .badge-yellow {
-    @apply badge bg-gold-500/15 text-gold-600 border border-gold-500/30;
+    @apply badge bg-gold-50 text-gold-700 border border-gold-200;
   }
 
   .badge-red {
