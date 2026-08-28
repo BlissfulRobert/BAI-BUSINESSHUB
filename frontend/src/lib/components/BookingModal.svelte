@@ -2,6 +2,7 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Calendar from '$lib/components/Calendar.svelte';
 	import { supabase } from '$lib/supabase/client';
+	import { profile } from '$lib/stores/auth';
 	import { CALENDAR_LOOKAHEAD_DAYS, HUB_CLOSE_HOUR, HUB_OPEN_HOUR, getSeriesDates, rangesOverlap } from '$lib/utils/dates';
 	import { formatDate, getRoomImage } from '$lib/utils/format';
 	import type { Room, Plan, Booking } from '$lib/types/database';
@@ -89,6 +90,14 @@
 	// (Re)load availability whenever the modal opens or the selected room changes.
 	$: if (isOpen && room) {
 		loadBookings();
+	}
+
+	// Auto-fill the guest's details from their signed-in profile so they don't
+	// have to retype them. Runs every time the modal opens.
+	$: if (isOpen) {
+		if ($profile?.full_name) guestName = $profile.full_name;
+		if ($profile?.email) guestEmail = $profile.email;
+		if ($profile?.phone) guestPhone = $profile.phone;
 	}
 
 	// Business hours come from the shared availability engine so the modal's
@@ -594,8 +603,10 @@
 							type="text"
 							bind:value={guestName}
 							placeholder="Enter your full name"
-							class="input"
+							readonly
+							class="input disabled:cursor-not-allowed"
 						/>
+						<p class="mt-1 text-xs text-dark-500">Filled from your account profile.</p>
 					</div>
 
 					<div>
@@ -605,7 +616,8 @@
 							type="email"
 							bind:value={guestEmail}
 							placeholder="Enter your email"
-							class="input"
+							readonly
+							class="input disabled:cursor-not-allowed"
 						/>
 					</div>
 
@@ -616,7 +628,8 @@
 							type="tel"
 							bind:value={guestPhone}
 							placeholder="Enter your phone number"
-							class="input"
+							readonly
+							class="input disabled:cursor-not-allowed"
 						/>
 					</div>
 
