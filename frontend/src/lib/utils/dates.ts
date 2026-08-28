@@ -1,8 +1,8 @@
 import type { Booking, Plan } from '$lib/types/database';
 
 /** Business hours the hub is bookable within. Adjust to match real operating hours. */
-export const HUB_OPEN_HOUR = 9; // 9:00 AM
-export const HUB_CLOSE_HOUR = 17; // 5:00 PM
+export const HUB_OPEN_HOUR = 6; // 6:00 AM
+export const HUB_CLOSE_HOUR = 20; // 8:00 PM
 const SLOT_STEP_MINUTES = 60;
 
 /** How far ahead a series start date can be picked. */
