@@ -1,42 +1,41 @@
 <script lang="ts">
-  import type { Plan } from '$lib/types/database';
-  import { formatCurrency } from '$lib/utils/format';
+	import type { Plan } from '$lib/types/database';
 
-  export let plan: Plan;
-  export let highlighted: boolean = false;
+	export let plan: Plan;
+	export let selected = false;
+
+	function formatPrice(value: number) {
+		return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value);
+	}
 </script>
 
-<div class="relative card {highlighted ? 'border-primary-600 ring-1 ring-primary-600/30' : ''} hover:border-primary-600/50 transition-all duration-300">
-  {#if highlighted}
-    <div class="absolute -top-3 left-1/2 -translate-x-1/2">
-      <span class="bg-primary-600 text-white text-xs font-semibold px-3 py-1 rounded-full">Most Popular</span>
-    </div>
-  {/if}
+<button
+	type="button"
+	on:click
+	aria-pressed={selected}
+	class="flex w-full flex-col rounded-xl border p-4 text-left transition {selected
+		? 'border-slate-900 bg-slate-900 text-white'
+		: 'border-slate-200 bg-white hover:border-slate-300'}"
+>
+	<div class="flex items-baseline justify-between">
+		<span class="font-semibold">{plan.name}</span>
+		<span class="text-sm {selected ? 'text-slate-200' : 'text-slate-500'}">{plan.duration_label}</span>
+	</div>
 
-  <div class="text-center mb-6">
-    <h3 class="text-xl font-bold text-white mb-2">{plan.name}</h3>
-    <p class="text-sm text-dark-400 mb-4">{plan.description}</p>
-    <div class="flex items-baseline justify-center gap-1">
-      <span class="text-4xl font-bold text-primary-400">{formatCurrency(plan.price)}</span>
-      <span class="text-dark-400">/{plan.duration_label.toLowerCase()}</span>
-    </div>
-  </div>
+	<span class="mt-1 text-2xl font-bold">{formatPrice(plan.price)}</span>
 
-  <ul class="space-y-3 mb-8">
-    {#each plan.features as feature}
-      <li class="flex items-start gap-3">
-        <svg class="w-5 h-5 text-primary-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-        </svg>
-        <span class="text-sm text-dark-300">{feature}</span>
-      </li>
-    {/each}
-  </ul>
+	{#if plan.description}
+		<p class="mt-2 text-sm {selected ? 'text-slate-300' : 'text-slate-500'}">{plan.description}</p>
+	{/if}
 
-  <a
-    href="/auth/register"
-    class="block text-center {highlighted ? 'btn-primary' : 'btn-secondary'} py-3 w-full"
-  >
-    Get Started
-  </a>
-</div>
+	{#if plan.features?.length}
+		<ul class="mt-3 space-y-1 text-sm {selected ? 'text-slate-200' : 'text-slate-600'}">
+			{#each plan.features as feature}
+				<li class="flex items-start gap-1.5">
+					<span aria-hidden="true">•</span>
+					<span>{feature}</span>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</button>

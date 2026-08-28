@@ -57,16 +57,17 @@
 
 <style>
   div :global(.leaflet-popup-content-wrapper) {
-    background: #1e293b;
-    color: #e2e8f0;
+    background: #ffffff;
+    color: #111315;
     border-radius: 0.75rem;
-    border: 1px solid #334155;
+    border: 1px solid #e2e5ec;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
   div :global(.leaflet-popup-tip) {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: #ffffff;
+    border: 1px solid #e2e5ec;
   }
   div :global(.leaflet-popup-close-button) {
-    color: #94a3b8;
+    color: #6b7180;
   }
 </style>
