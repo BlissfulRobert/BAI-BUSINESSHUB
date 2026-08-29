@@ -168,6 +168,14 @@ export function getDayAvailability(existingBookingsForDate: Booking[]): DayAvail
 	return 'free';
 }
 
+/**
+ * Number of free 1-hour blocks available on a day (0 if fully booked).
+ * Used for the calendar availability teaser.
+ */
+export function getFreeHourCount(existingBookingsForDate: Booking[]): number {
+	return buildTimeSlots(1, existingBookingsForDate).filter((slot) => slot.available).length;
+}
+
 export interface CalendarDay {
 	iso: string;
 	dayOfMonth: number;

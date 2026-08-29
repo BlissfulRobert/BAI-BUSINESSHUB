@@ -45,6 +45,7 @@
     <img
       src={getRoomImage(room.name)}
       alt={room.name}
+      loading="lazy"
       class="h-full w-full object-cover transition duration-300 group-hover:scale-105"
     />
   </div>

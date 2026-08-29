@@ -83,6 +83,10 @@
           </a>
         </div>
 
+        <p class="mt-4 text-sm text-dark-500">
+          No payment today — pay on-site once your booking is approved.
+        </p>
+
         <div class="flex items-center gap-8 mt-12 pt-8 border-t border-dark-200">
           <div>
             <div class="text-2xl font-bold text-dark-900">{rooms.length}</div>
