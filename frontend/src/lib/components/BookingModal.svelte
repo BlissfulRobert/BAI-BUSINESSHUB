@@ -3,7 +3,7 @@
 	import Calendar from '$lib/components/Calendar.svelte';
 	import { supabase } from '$lib/supabase/client';
 	import { profile } from '$lib/stores/auth';
-	import { CALENDAR_LOOKAHEAD_DAYS, HUB_CLOSE_HOUR, HUB_OPEN_HOUR, getSeriesDates, rangesOverlap } from '$lib/utils/dates';
+	import { CALENDAR_LOOKAHEAD_DAYS, HUB_CLOSE_HOUR, HUB_OPEN_HOUR, buildTimeSlots, getFreeHourCount, getSeriesDates, rangesOverlap } from '$lib/utils/dates';
 	import { formatDate, getRoomImage } from '$lib/utils/format';
 	import type { Room, Plan, Booking } from '$lib/types/database';
 
@@ -26,7 +26,8 @@
 
 	let submitting = false;
 	let errorMessage = '';
-	let successMessage = '';
+	let showConfirmation = false;
+	let bookingReference = '';
 
 	// Multi-step wizard: 1 = plan & date, 2 = time & details, 3 = review & confirm.
 	let step = 1;
@@ -40,6 +41,18 @@
 		guestName.trim().length > 0 &&
 		guestEmail.trim().length > 0;
 	const lastStep = 3;
+
+	// Friendly hints shown instead of a silently-disabled "Continue" button.
+	$: step1Hints = [
+		!selectedPlan ? 'Select a plan to continue.' : '',
+		!selectedDate ? 'Select a date to continue.' : ''
+	].filter(Boolean);
+	$: step2Hints = [
+		!startTime ? 'Choose a start time.' : '',
+		!endTime ? 'Choose an end time.' : '',
+		!guestName.trim() ? 'Enter your name.' : '',
+		!guestEmail.trim() ? 'Enter your email.' : ''
+	].filter(Boolean);
 
 	function nextStep() {
 		if (step < lastStep) step += 1;
@@ -63,6 +76,13 @@
 
 	$: isSeriesPlan = selectedPlan?.slug === 'weekly' || selectedPlan?.slug === 'monthly';
 	$: seriesDates = selectedPlan && selectedDate ? getSeriesDates(selectedDate, selectedPlan) : [];
+
+	// Available 1-hour blocks for the selected (start) date — used for the
+	// calendar "teaser" preview. Independent of plan duration on purpose.
+	$: availableHourSlots = selectedDate
+		? (buildTimeSlots(1, bookingsByDate[selectedDate] ?? []).filter((s) => s.available) ?? [])
+		: [];
+	$: selectedDayFreeCount = selectedDate ? getFreeHourCount(bookingsByDate[selectedDate] ?? []) : 0;
 
 	// Fetch this room's blocking bookings so the modal's calendar reflects real
 	// availability (mirrors the room page's server query). If the anon key can't
@@ -254,14 +274,14 @@
 		purpose = '';
 
 		errorMessage = '';
-		successMessage = '';
+		showConfirmation = false;
+		bookingReference = '';
 
 		step = 1;
 	}
 
     async function submitBooking() {
         errorMessage = '';
-        successMessage = '';
 
         if (!room) {
             errorMessage = 'No room selected.';
@@ -341,21 +361,24 @@
                 })
             });
 
-            const result = await response.json();
+			const result = await response.json();
 
-            if (!response.ok) {
-                throw new Error(
-                    result.message || 'Unable to create booking.'
-                );
-            }
+			if (!response.ok) {
+				throw new Error(
+					result.message || 'Unable to create booking.'
+				);
+			}
 
-            successMessage = 'Your booking has been submitted successfully.';
+			const bookings = Array.isArray(result?.bookings) ? result.bookings : [];
+			const first = bookings[0];
+			bookingReference = (first?.id as string | undefined) ?? '';
 
-            // Close after showing success message
-            setTimeout(() => {
-                close();
-            }, 1500);
-        } catch (error) {
+			// Show a dedicated confirmation view instead of auto-closing so the
+			// member can see exactly what was submitted and what happens next.
+			errorMessage = '';
+			showConfirmation = true;
+			step = 4;
+		} catch (error) {
             errorMessage =
                 error instanceof Error
                     ? error.message
@@ -395,6 +418,7 @@
 		</div>
 
 		<!-- Progress indicator -->
+		{#if step <= 3}
 		<div class="mb-6 flex items-center gap-2 text-xs font-medium">
 			{#each stepTitles as title, i}
 				{@const stepNum = i + 1}
@@ -423,6 +447,30 @@
 				</button>
 			{/each}
 		</div>
+		{/if}
+
+		<!-- Sticky summary (business hours + chosen plan, no rates) -->
+		{#if step <= 3}
+			<div class="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-dark-200 bg-white px-3 py-2 text-xs text-dark-600">
+				<span class="inline-flex items-center gap-1.5">
+					<svg class="h-3.5 w-3.5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					Open {formatDisplayTime(minutesToTime(HUB_OPEN_HOUR * 60))} – {formatDisplayTime(minutesToTime(HUB_CLOSE_HOUR * 60))}
+				</span>
+				<span class="inline-flex items-center gap-1.5">
+					<span class="h-1.5 w-1.5 rounded-full bg-primary-500"></span>
+					{#if selectedPlan}
+						{selectedPlan.name} · {selectedPlan.duration_label}
+					{:else}
+						No plan selected yet
+					{/if}
+					{#if isSeriesPlan && seriesDates.length > 1}
+						<span class="text-dark-400">· {seriesDates.length} days</span>
+					{/if}
+				</span>
+			</div>
+		{/if}
 
 
 		<!-- STEP 1: Plan & Date -->
@@ -491,6 +539,42 @@
 						on:selectDate={(e) => (selectedDate = e.detail)}
 					/>
 
+					{#if selectedDate}
+						<div class="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-4">
+							<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+								<p class="text-sm font-medium text-dark-700">
+									Available hours on
+									<span class="font-semibold text-dark-900">{formatDate(selectedDate)}</span>
+								</p>
+								{#if selectedDayFreeCount > 0 && availableHourSlots.length > 0}
+									<span class="rounded-full bg-primary-100 px-2.5 py-0.5 text-xs font-medium text-primary-800">
+										{selectedDayFreeCount} hour{selectedDayFreeCount === 1 ? '' : 's'} free
+									</span>
+								{/if}
+							</div>
+							{#if availableHourSlots.length > 0}
+								<div class="flex flex-wrap gap-1.5">
+									{#each availableHourSlots as slot}
+										<span
+											class="rounded-md border border-primary-200 bg-white px-2 py-1 text-xs font-medium text-primary-800"
+										>
+											{slot.label}
+										</span>
+									{/each}
+								</div>
+							{:else}
+								<p class="text-xs text-dark-500">
+									No 1-hour blocks available on this day.
+								</p>
+							{/if}
+							<p class="mt-2 text-xs text-dark-400">
+								{isSeriesPlan && seriesDates.length > 1
+									? 'Preview shows the start date. The time you pick must be free across all days in the range.'
+									: 'This is just a preview — pick your exact time on the next step.'}
+							</p>
+						</div>
+					{/if}
+
 					{#if isSeriesPlan && seriesDates.length > 1}
 						<div class="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-4">
 							<p class="flex flex-wrap items-baseline gap-x-2 text-sm text-dark-600">
@@ -512,10 +596,17 @@
 				</div>
 			</div>
 
-			<div class="mt-6 flex justify-end">
+			<div class="mt-6 flex items-center justify-between">
+				{#if step1Hints.length > 0}
+					<div class="space-y-0.5 text-xs text-dark-500">
+						{#each step1Hints as hint}
+							<p>• {hint}</p>
+						{/each}
+					</div>
+				{/if}
 				<button
 					type="button"
-					class="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-50"
+					class="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-50 ml-auto"
 					disabled={!canContinue1}
 					on:click={nextStep}
 				>
@@ -646,7 +737,7 @@
 				</div>
 			</div>
 
-			<div class="mt-6 flex items-center justify-between">
+			<div class="mt-6 flex items-center justify-between gap-4">
 				<button
 					type="button"
 					class="rounded-lg border border-dark-300 px-6 py-2.5 text-sm font-medium text-dark-600 transition hover:bg-dark-100"
@@ -654,9 +745,16 @@
 				>
 					Back
 				</button>
+				{#if step2Hints.length > 0}
+					<div class="flex-1 space-y-0.5 text-xs text-dark-500 text-right">
+						{#each step2Hints as hint}
+							<p>• {hint}</p>
+						{/each}
+					</div>
+				{/if}
 				<button
 					type="button"
-					class="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-50"
+					class="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
 					disabled={!canContinue2}
 					on:click={nextStep}
 				>
@@ -726,12 +824,6 @@
 				</div>
 			{/if}
 
-			{#if successMessage}
-				<div class="mt-5 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-					{successMessage}
-				</div>
-			{/if}
-
 			<div class="mt-6 flex items-center justify-between">
 				<button
 					type="button"
@@ -758,6 +850,72 @@
 				This reserves the {seriesDates.length > 1 ? `${seriesDates.length} days` : 'slot'}
 				pending admin approval. Payment is on site and non-refundable.
 			</p>
+		{/if}
+
+		<!-- STEP 4: Confirmation -->
+		{#if step === 4 && showConfirmation}
+			<div class="rounded-xl border border-green-200 bg-green-50 p-6 text-center">
+				<div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
+					<svg class="h-8 w-8 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+					</svg>
+				</div>
+				<h3 class="text-lg font-semibold text-dark-900">Booking request submitted</h3>
+				<p class="mt-1 text-sm text-dark-600">
+					Your booking is now pending admin approval. You'll be notified once it's approved.
+				</p>
+				{#if bookingReference}
+					<p class="mt-2 text-xs text-dark-500">
+						Reference:
+						<span class="font-mono font-semibold text-dark-700">{bookingReference.slice(0, 8)}</span>
+					</p>
+				{/if}
+			</div>
+
+			<div class="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-5">
+				<h4 class="mb-3 text-sm font-semibold text-dark-900">Summary</h4>
+				<div class="space-y-2.5 text-sm">
+					<div class="flex justify-between gap-4">
+						<span class="text-dark-500">Room</span>
+						<span class="font-medium text-dark-900">{room.name}</span>
+					</div>
+					<div class="flex justify-between gap-4">
+						<span class="text-dark-500">Plan</span>
+						<span class="font-medium text-dark-900">{selectedPlan?.name}</span>
+					</div>
+					<div class="flex justify-between gap-4">
+						<span class="text-dark-500">Date</span>
+						{#if isSeriesPlan && seriesDates.length > 1}
+							<span class="text-right font-medium text-dark-900">
+								{seriesDates.length} days<br />
+								<span class="text-xs text-dark-500">
+									{formatDate(seriesDates[0])} → {formatDate(seriesDates[seriesDates.length - 1])}
+								</span>
+							</span>
+						{:else}
+							<span class="font-medium text-dark-900">{formatDate(selectedDate)}</span>
+						{/if}
+					</div>
+					<div class="flex justify-between gap-4">
+						<span class="text-dark-500">Time</span>
+						<span class="font-medium text-dark-900">
+							{formatDisplayTime(startTime)} – {formatDisplayTime(endTime)}
+						</span>
+					</div>
+					{#if purpose}
+						<div class="flex justify-between gap-4">
+							<span class="text-dark-500">Purpose</span>
+							<span class="text-right font-medium text-dark-900">{purpose}</span>
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<div class="mt-6">
+				<button type="button" class="btn-primary w-full" on:click={close}>
+					Done
+				</button>
+			</div>
 		{/if}
 
 	{/if}

@@ -4,7 +4,8 @@
   import { supabase } from '$lib/supabase/client';
   import { user, profile } from '$lib/stores/auth';
   import type { Booking, Room, Profile, Report, GalleryImage, Plan } from '$lib/types/database';
-  import { formatDate, formatTime, formatDuration, formatCurrency, getRoomImage } from '$lib/utils/format';
+  import { formatDate, formatTime, formatCurrency, getRoomImage } from '$lib/utils/format';
+  import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
   import Modal from '$lib/components/Modal.svelte';
 
   let bookings: Booking[] = [];
@@ -24,6 +25,15 @@
   ];
   let activeTab: 'overview' | 'bookings' | 'rooms' | 'members' | 'reports' | 'gallery' = 'overview';
   let filterStatus = 'all';
+
+  // Bookings list controls (search / date filter / sort).
+  let searchQuery = '';
+  let dateFilter = '';
+  let sortOrder: 'newest' | 'oldest' = 'newest';
+
+  // Bulk actions selection.
+  let selectedBookingIds = new Set<string>();
+  let bulkLoading = false;
 
   let showImageUploadModal = false;
   let uploadTitle = '';
@@ -150,28 +160,72 @@
     if (!error) await loadData();
   }
 
-  function getStatusBadge(status: string) {
-    switch (status) {
-      case 'paid': return 'badge-green';
-      case 'pending': case 'approved': return 'badge-yellow';
-      case 'cancelled': return 'badge-red';
-      case 'completed': return 'badge-blue';
-      default: return 'badge-blue';
-    }
+  function goToTab(tab: 'overview' | 'bookings' | 'rooms' | 'members' | 'reports' | 'gallery') {
+    activeTab = tab;
   }
 
-  function getReportStatusBadge(status: string) {
-    switch (status) {
-      case 'open': return 'badge-yellow';
-      case 'in_progress': return 'badge-blue';
-      case 'resolved': return 'badge-green';
-      default: return 'badge-blue';
+  $: pendingBookings = bookings.filter(b => b.status === 'pending');
+
+  $: filteredBookings = bookings
+    .filter(b => filterStatus === 'all' || b.status === filterStatus)
+    .filter(b => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return [b.room?.name, b.profile?.full_name, b.guest_name, b.guest_email]
+        .filter(Boolean)
+        .some(v => v!.toLowerCase().includes(q));
+    })
+    .filter(b => !dateFilter || b.date === dateFilter)
+    .sort((a, b) => sortOrder === 'newest'
+      ? (a.date > b.date ? -1 : a.date < b.date ? 1 : 0)
+      : (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  $: filteredMembers = members
+    .filter(m => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return [m.full_name, m.email, m.phone].filter(Boolean).some(v => v!.toLowerCase().includes(q));
+    });
+
+  $: filteredReports = reports
+    .filter(r => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return [r.subject, r.description, r.profile?.full_name].filter(Boolean).some(v => v!.toLowerCase().includes(q));
+    });
+
+  $: visibleBookingIds = filteredBookings.map(b => b.id);
+  $: allVisibleSelected = visibleBookingIds.length > 0 && visibleBookingIds.every(id => selectedBookingIds.has(id));
+
+  function toggleSelectAll() {
+    if (allVisibleSelected) {
+      visibleBookingIds.forEach(id => selectedBookingIds.delete(id));
+    } else {
+      visibleBookingIds.forEach(id => selectedBookingIds.add(id));
     }
+    selectedBookingIds = new Set(selectedBookingIds);
   }
 
-  $: filteredBookings = filterStatus === 'all'
-    ? bookings
-    : bookings.filter(b => b.status === filterStatus);
+  function toggleSelectBooking(id: string) {
+    if (selectedBookingIds.has(id)) {
+      selectedBookingIds.delete(id);
+    } else {
+      selectedBookingIds.add(id);
+    }
+    selectedBookingIds = new Set(selectedBookingIds);
+  }
+
+  async function bulkUpdateStatus(status: string) {
+    if (selectedBookingIds.size === 0) return;
+    bulkLoading = true;
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status })
+      .in('id', [...selectedBookingIds]);
+    bulkLoading = false;
+    selectedBookingIds = new Set();
+    if (!error) await loadData();
+  }
 
   $: todayBookings = bookings.filter(b => {
     const today = new Date().toISOString().split('T')[0];
@@ -202,8 +256,8 @@
   </div>
 
   <!-- Stats Cards -->
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-    <div class="card">
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+    <button on:click={() => goToTab('bookings')} class="card text-left hover:shadow-md transition-shadow">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 bg-primary-50 rounded-lg flex items-center justify-center border border-primary-100">
           <svg class="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -215,9 +269,9 @@
           <p class="text-xs text-dark-500">Today</p>
         </div>
       </div>
-    </div>
+    </button>
 
-    <div class="card">
+    <button on:click={() => goToTab('bookings')} class="card text-left hover:shadow-md transition-shadow">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
           <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -229,9 +283,23 @@
           <p class="text-xs text-dark-500">Revenue</p>
         </div>
       </div>
-    </div>
+    </button>
 
-    <div class="card">
+    <button on:click={() => { filterStatus = 'pending'; goToTab('bookings'); }} class="card text-left hover:shadow-md transition-shadow">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-gold-500/15 rounded-lg flex items-center justify-center">
+          <svg class="w-5 h-5 text-gold-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-2xl font-bold text-dark-900">{pendingBookings.length}</p>
+          <p class="text-xs text-dark-500">Pending</p>
+        </div>
+      </div>
+    </button>
+
+    <button on:click={() => goToTab('members')} class="card text-left hover:shadow-md transition-shadow">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 bg-gold-500/15 rounded-lg flex items-center justify-center">
           <svg class="w-5 h-5 text-gold-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -240,12 +308,12 @@
         </div>
         <div>
           <p class="text-2xl font-bold text-dark-900">{pendingMembers.length}</p>
-          <p class="text-xs text-dark-500">Pending</p>
+          <p class="text-xs text-dark-500">Members</p>
         </div>
       </div>
-    </div>
+    </button>
 
-    <div class="card">
+    <button on:click={() => goToTab('reports')} class="card text-left hover:shadow-md transition-shadow">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
           <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -257,7 +325,7 @@
           <p class="text-xs text-dark-500">Reports</p>
         </div>
       </div>
-    </div>
+    </button>
   </div>
 
   <!-- Tab Navigation -->
@@ -274,25 +342,40 @@
   </div>
 
   {#if loading}
-    <div class="space-y-4">
-      {#each [1, 2, 3] as _}
-        <div class="card animate-pulse"><div class="h-16 bg-dark-200 rounded"></div></div>
-      {/each}
+    <div class="space-y-6" aria-label="Loading admin dashboard">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 animate-pulse">
+        {#each [1, 2, 3, 4, 5] as _}
+          <div class="card h-[76px] bg-dark-200"></div>
+        {/each}
+      </div>
+      <div class="h-10 bg-dark-200 rounded-lg mb-4 animate-pulse"></div>
+      <div class="space-y-4">
+        {#each [1, 2, 3] as _}
+          <div class="card animate-pulse">
+            <div class="h-4 bg-dark-200 rounded w-1/3 mb-3"></div>
+            <div class="h-5 bg-dark-200 rounded w-full"></div>
+          </div>
+        {/each}
+      </div>
     </div>
 
   <!-- OVERVIEW TAB -->
   {:else if activeTab === 'overview'}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div class="card">
-        <h3 class="text-lg font-semibold text-dark-900 mb-4">Recent Bookings</h3>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-dark-900">Recent Bookings</h3>
+          <button on:click={() => goToTab('bookings')} class="text-sm text-primary-700 hover:text-primary-600 font-medium">View all</button>
+        </div>
         <div class="space-y-3">
-          {#each bookings.slice(0, 5) as booking}
+          {#each bookings.slice(0, 5) as booking (booking.id)}
+            {@const statusMeta = getStatusMeta(booking.status)}
             <div class="flex items-center justify-between py-2 border-b border-dark-200 last:border-0">
               <div>
                 <p class="text-sm text-dark-900">{booking.room?.name || 'Room'} - {booking.profile?.full_name || booking.guest_name}</p>
                 <p class="text-xs text-dark-500">{formatDate(booking.date)}</p>
               </div>
-              <span class={getStatusBadge(booking.status)}>{booking.status}</span>
+              <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
             </div>
           {/each}
           {#if bookings.length === 0}
@@ -303,7 +386,10 @@
 
       <div class="space-y-6">
         <div class="card">
-          <h3 class="text-lg font-semibold text-dark-900 mb-4">Pending Approvals</h3>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-dark-900">Pending Approvals</h3>
+            <button on:click={() => goToTab('members')} class="text-sm text-primary-700 hover:text-primary-600 font-medium">View all</button>
+          </div>
           {#if pendingMembers.length === 0}
             <p class="text-sm text-dark-500">No pending members</p>
           {:else}
@@ -324,7 +410,10 @@
         </div>
 
         <div class="card">
-          <h3 class="text-lg font-semibold text-dark-900 mb-4">Open Reports</h3>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-dark-900">Open Reports</h3>
+            <button on:click={() => goToTab('reports')} class="text-sm text-primary-700 hover:text-primary-600 font-medium">View all</button>
+          </div>
           {#if openReports.length === 0}
             <p class="text-sm text-dark-500">No open reports</p>
           {:else}
@@ -348,48 +437,115 @@
 
   <!-- BOOKINGS TAB -->
   {:else if activeTab === 'bookings'}
-    <div class="mb-4 flex gap-2 flex-wrap">
-      {#each ['all', 'pending', 'approved', 'paid', 'completed', 'cancelled'] as status}
-        <button
-          on:click={() => filterStatus = status}
-          class="px-3 py-1.5 rounded-lg text-sm transition-colors border
-            {filterStatus === status ? 'bg-primary-600 text-white border-primary-600' : 'bg-white border-dark-200 text-dark-600 hover:bg-dark-100'}"
-        >
-          {status.charAt(0).toUpperCase() + status.slice(1)}
-          {#if status !== 'all'}
-            <span class="ml-1 text-xs">({bookings.filter(b => b.status === status).length})</span>
-          {/if}
-        </button>
-      {/each}
+    <div class="mb-4 space-y-4">
+      <div class="mb-4 flex gap-2 flex-wrap">
+        {#each ['all', 'pending', 'approved', 'paid', 'completed', 'cancelled'] as status}
+          <button
+            on:click={() => filterStatus = status}
+            class="px-3 py-1.5 rounded-lg text-sm transition-colors border
+              {filterStatus === status ? 'bg-primary-600 text-white border-primary-600' : 'bg-white border-dark-200 text-dark-600 hover:bg-dark-100'}"
+          >
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+            {#if status !== 'all'}
+              <span class="ml-1 text-xs">({bookings.filter(b => b.status === status).length})</span>
+            {/if}
+          </button>
+        {/each}
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <div class="relative flex-1 min-w-0 w-full sm:w-auto">
+          <svg class="w-4 h-4 text-dark-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            bind:value={searchQuery}
+            type="search"
+            placeholder="Search room, guest, or email..."
+            class="input pl-9"
+          />
+        </div>
+        <input
+          bind:value={dateFilter}
+          type="date"
+          class="input sm:w-44"
+          aria-label="Filter by date"
+        />
+        <select bind:value={sortOrder} class="input sm:w-auto" aria-label="Sort bookings">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+        {#if searchQuery || dateFilter}
+          <button
+            on:click={() => { searchQuery = ''; dateFilter = ''; }}
+            class="text-sm text-dark-500 hover:text-dark-700 px-2 py-1.5 rounded-lg hover:bg-dark-100 transition-colors"
+          >
+            Clear
+          </button>
+        {/if}
+      </div>
     </div>
 
+    {#if selectedBookingIds.size > 0}
+      <div class="mb-4 flex items-center gap-2 flex-wrap bg-primary-50 border border-primary-100 rounded-lg px-4 py-3">
+        <span class="text-sm font-medium text-primary-900">{selectedBookingIds.size} selected</span>
+        <button on:click={() => bulkUpdateStatus('approved')} disabled={bulkLoading} class="btn-ghost-green text-sm">Approve</button>
+        <button on:click={() => bulkUpdateStatus('paid')} disabled={bulkLoading} class="btn-ghost-blue text-sm">Mark Paid</button>
+        <button on:click={() => bulkUpdateStatus('cancelled')} disabled={bulkLoading} class="btn-ghost-danger text-sm">Cancel</button>
+        <button on:click={() => selectedBookingIds = new Set()} class="text-sm text-dark-500 hover:text-dark-700 px-3 py-1.5 rounded-lg hover:bg-dark-100">Clear</button>
+      </div>
+    {/if}
+
     {#if filteredBookings.length === 0}
-      <div class="card text-center py-12"><p class="text-dark-500">No bookings found</p></div>
+      <div class="card text-center py-12">
+        <p class="text-dark-500 mb-6">No bookings found</p>
+        <button on:click={() => { searchQuery = ''; dateFilter = ''; filterStatus = 'all'; }} class="btn-secondary">
+          Clear filters
+        </button>
+      </div>
     {:else}
       <div class="space-y-3">
+        <div class="flex items-center gap-3 px-1">
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            on:change={toggleSelectAll}
+            class="w-4 h-4 accent-primary-600"
+            aria-label="Select all"
+          />
+          <span class="text-xs text-dark-500">Select all ({filteredBookings.length})</span>
+        </div>
         {#each filteredBookings as booking (booking.id)}
+          {@const statusMeta = getStatusMeta(booking.status)}
           <div class="card">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+              <input
+                type="checkbox"
+                checked={selectedBookingIds.has(booking.id)}
+                on:change={() => toggleSelectBooking(booking.id)}
+                class="w-4 h-4 accent-primary-600 flex-shrink-0"
+                aria-label={`Select ${booking.room?.name || 'booking'}`}
+              />
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
                   <h3 class="font-semibold text-dark-900">{booking.room?.name || 'Unknown Room'}</h3>
-                  <span class={getStatusBadge(booking.status)}>{booking.status}</span>
+                  <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
                 </div>
                 <p class="text-sm text-dark-500">{booking.profile?.full_name || booking.guest_name} · {booking.guest_email}</p>
                 <p class="text-sm text-dark-500">{formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}</p>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 {#if booking.status === 'pending'}
-                  <button on:click={() => updateBookingStatus(booking.id, 'approved')} class="text-sm text-green-700 hover:text-green-600 px-3 py-1.5 rounded-lg hover:bg-green-100">Approve</button>
+                  <button on:click={() => updateBookingStatus(booking.id, 'approved')} class="btn-ghost-green text-sm">Approve</button>
                 {/if}
                 {#if booking.status === 'approved'}
-                  <button on:click={() => updateBookingStatus(booking.id, 'paid')} class="text-sm text-blue-700 hover:text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100">Mark Paid</button>
+                  <button on:click={() => updateBookingStatus(booking.id, 'paid')} class="btn-ghost-blue text-sm">Mark Paid</button>
                 {/if}
                 {#if booking.status === 'paid'}
-                  <button on:click={() => updateBookingStatus(booking.id, 'completed')} class="text-sm text-primary-700 hover:text-primary-600 px-3 py-1.5 rounded-lg hover:bg-primary-50">Complete</button>
+                  <button on:click={() => updateBookingStatus(booking.id, 'completed')} class="btn-ghost-primary text-sm">Complete</button>
                 {/if}
                 {#if booking.status !== 'cancelled'}
-                  <button on:click={() => updateBookingStatus(booking.id, 'cancelled')} class="text-sm text-red-600 hover:text-red-500 px-3 py-1.5 rounded-lg hover:bg-red-100">Cancel</button>
+                  <button on:click={() => updateBookingStatus(booking.id, 'cancelled')} class="btn-ghost-danger text-sm">Cancel</button>
                 {/if}
               </div>
             </div>
@@ -429,46 +585,73 @@
 
   <!-- MEMBERS TAB -->
   {:else if activeTab === 'members'}
-    <div class="space-y-3">
-      {#each members as member (member.id)}
-        <div class="card">
-          <div class="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <h3 class="font-semibold text-dark-900">{member.full_name}</h3>
-                <span class={member.is_approved ? 'badge-green' : 'badge-yellow'}>
-                  {member.is_approved ? 'Approved' : 'Pending'}
-                </span>
-                <span class="badge bg-dark-100 text-dark-600 border-dark-200">{member.role}</span>
+    <div class="mb-4 relative max-w-sm">
+      <svg class="w-4 h-4 text-dark-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <input
+        bind:value={searchQuery}
+        type="search"
+        placeholder="Search name, email, or phone..."
+        class="input pl-9"
+      />
+    </div>
+    {#if filteredMembers.length === 0}
+      <div class="card text-center py-12"><p class="text-dark-500">No members found</p></div>
+    {:else}
+      <div class="space-y-3">
+        {#each filteredMembers as member (member.id)}
+          <div class="card">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="font-semibold text-dark-900">{member.full_name}</h3>
+                  <span class={member.is_approved ? 'badge-green' : 'badge-yellow'}>
+                    {member.is_approved ? 'Approved' : 'Pending'}
+                  </span>
+                  <span class="badge bg-dark-100 text-dark-600 border-dark-200">{member.role}</span>
+                </div>
+                <p class="text-sm text-dark-500">{member.email} · {member.phone || 'No phone'}</p>
+                <p class="text-xs text-dark-500">Joined {formatDate(member.created_at)}</p>
               </div>
-              <p class="text-sm text-dark-500">{member.email} · {member.phone || 'No phone'}</p>
-              <p class="text-xs text-dark-500">Joined {formatDate(member.created_at)}</p>
-            </div>
-            <div class="flex items-center gap-2">
-              {#if !member.is_approved}
-                <button on:click={() => approveMember(member.id)} class="text-sm text-green-700 hover:text-green-600 px-3 py-1.5 rounded-lg hover:bg-green-100">
-                  Approve
-                </button>
-              {/if}
+              <div class="flex items-center gap-2">
+                {#if !member.is_approved}
+                  <button on:click={() => approveMember(member.id)} class="btn-ghost-green text-sm">
+                    Approve
+                  </button>
+                {/if}
+              </div>
             </div>
           </div>
-        </div>
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {/if}
 
   <!-- REPORTS TAB -->
   {:else if activeTab === 'reports'}
-    {#if reports.length === 0}
-      <div class="card text-center py-12"><p class="text-dark-500">No reports</p></div>
+    <div class="mb-4 relative max-w-sm">
+      <svg class="w-4 h-4 text-dark-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <input
+        bind:value={searchQuery}
+        type="search"
+        placeholder="Search subject, description, or reporter..."
+        class="input pl-9"
+      />
+    </div>
+    {#if filteredReports.length === 0}
+      <div class="card text-center py-12"><p class="text-dark-500">No reports found</p></div>
     {:else}
       <div class="space-y-3">
-        {#each reports as report (report.id)}
+        {#each filteredReports as report (report.id)}
+          {@const reportMeta = getReportStatusMeta(report.status)}
           <div class="card">
             <div class="flex flex-col sm:flex-row sm:items-start gap-4">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
                   <h3 class="font-semibold text-dark-900">{report.subject}</h3>
-                  <span class={getReportStatusBadge(report.status)}>{report.status.replace('_', ' ')}</span>
+                  <span class={reportMeta.badgeClass}>{reportMeta.label}</span>
                 </div>
                 <p class="text-sm text-dark-500">From: {report.profile?.full_name || 'Unknown'} ({report.profile?.email || ''})</p>
                 <p class="text-sm text-dark-700 mt-1">{report.description}</p>
@@ -481,7 +664,7 @@
                 <p class="text-xs text-dark-500 mt-2">{formatDate(report.created_at)}</p>
               </div>
               <div>
-                <button on:click={() => openReportResponse(report)} class="text-sm text-primary-700 hover:text-primary-600 px-3 py-1.5 rounded-lg hover:bg-primary-50">
+                <button on:click={() => openReportResponse(report)} class="btn-ghost-primary text-sm">
                   {report.admin_response ? 'Update' : 'Respond'}
                 </button>
               </div>

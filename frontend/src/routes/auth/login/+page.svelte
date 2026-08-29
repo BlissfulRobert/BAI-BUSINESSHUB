@@ -52,11 +52,11 @@
   <title>Login - BAI Business Hub</title>
 </svelte:head>
 
-<div class="min-h-[80vh] flex items-center justify-center py-12 px-4 bg-gradient-to-br from-primary-800 via-primary-700 to-primary-900">
+<div class="min-h-[80vh] flex items-center justify-center py-12 px-4 bg-dark-50">
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
-      <h1 class="text-3xl font-bold text-white">Welcome Back</h1>
-      <p class="text-primary-200 mt-2">Sign in to your account</p>
+      <h1 class="text-3xl font-bold text-dark-900">Welcome Back</h1>
+      <p class="text-dark-500 mt-2">Sign in to your account</p>
     </div>
 
     <form on:submit|preventDefault={handleLogin} class="card space-y-6">

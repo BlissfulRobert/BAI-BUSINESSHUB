@@ -97,7 +97,7 @@
             {#each navLinks as link}
               <a
                 href={link.path}
-                class={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                class={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
                   link.active
                     ? "text-white bg-white/15"
                     : "text-primary-100 hover:text-white hover:bg-white/10"
@@ -116,14 +116,14 @@
             {#if isAdmin}
               <a
                 href="/admin"
-                class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
               >
                 Admin
               </a>
             {/if}
             <a
               href="/member"
-              class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+              class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
             >
               My Bookings
             </a>
@@ -140,7 +140,7 @@
           {:else}
             <a
               href="/auth/login"
-              class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+              class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
             >
               Login
             </a>
@@ -152,7 +152,7 @@
 
         <button
           on:click={toggleMobileMenu}
-          class="lg:hidden p-2 text-white hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+          class="lg:hidden p-2 text-white hover:text-white rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
         >
           <svg
             class="w-6 h-6"
@@ -189,7 +189,7 @@
             <a
               href={link.path}
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+              class="block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60
                 {link.active
                 ? 'text-white bg-white/15'
                 : 'text-primary-100 hover:text-white hover:bg-white/10'}"

@@ -5,6 +5,7 @@
   import { user, profile } from '$lib/stores/auth';
   import type { Booking, Review, Report } from '$lib/types/database';
   import { formatDate, formatTime, formatDuration, formatCurrency } from '$lib/utils/format';
+  import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
   import Modal from '$lib/components/Modal.svelte';
 
   let bookings: Booking[] = [];
@@ -31,7 +32,12 @@
   let rescheduleTime = '';
   let rescheduleLoading = false;
 
+  let showCancelModal = false;
+  let cancelBooking: Booking | null = null;
+  let cancelLoading = false;
+
   $: isLoggedIn = !!$user;
+  $: reviewedBookingIds = new Set(reviews.map((r) => r.booking_id));
 
   onMount(async () => {
     if (!isLoggedIn) {
@@ -66,13 +72,23 @@
     loading = false;
   }
 
-  async function cancelBooking(bookingId: string) {
-    if (!confirm('Are you sure you want to cancel this booking? Payment is non-refundable.')) return;
+  function openCancelModal(booking: Booking) {
+    cancelBooking = booking;
+    showCancelModal = true;
+  }
+
+  async function submitCancel() {
+    if (!cancelBooking) return;
+    cancelLoading = true;
 
     const { error } = await supabase
       .from('bookings')
       .update({ status: 'cancelled' })
-      .eq('id', bookingId);
+      .eq('id', cancelBooking.id);
+
+    cancelLoading = false;
+    showCancelModal = false;
+    cancelBooking = null;
 
     if (!error) await loadData();
   }
@@ -182,25 +198,6 @@
     { key: 'reviews', label: 'Reviews', count: reviews.length },
     { key: 'reports', label: 'Reports', count: reports.length },
   ] as { key: 'upcoming' | 'past' | 'reviews' | 'reports'; label: string; count: number }[];
-
-  function getStatusBadge(status: string) {
-    switch (status) {
-      case 'paid': return 'badge-green';
-      case 'pending': case 'approved': return 'badge-yellow';
-      case 'cancelled': return 'badge-red';
-      case 'completed': return 'badge-blue';
-      default: return 'badge-blue';
-    }
-  }
-
-  function getReportStatusBadge(status: string) {
-    switch (status) {
-      case 'open': return 'badge-yellow';
-      case 'in_progress': return 'badge-blue';
-      case 'resolved': return 'badge-green';
-      default: return 'badge-blue';
-    }
-  }
 </script>
 
 <svelte:head>
@@ -225,7 +222,12 @@
         class="px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap
           {activeTab === tab.key ? 'bg-primary-600 text-white' : 'text-dark-500 hover:text-dark-900 hover:bg-dark-50'}"
       >
-        {tab.label} ({tab.count})
+        {tab.label}
+        {#if tab.count > 0}
+          <span class={`ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${activeTab === tab.key ? 'bg-white/25 text-white' : 'bg-primary-100 text-primary-700'}`}>
+            {tab.count}
+          </span>
+        {/if}
       </button>
     {/each}
   </div>
@@ -234,7 +236,20 @@
     <div class="space-y-4">
       {#each [1, 2, 3] as _}
         <div class="card animate-pulse">
-          <div class="h-20 bg-dark-200 rounded"></div>
+          <div class="flex items-start gap-4">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-3">
+                <div class="h-5 w-40 bg-dark-200 rounded"></div>
+                <div class="h-5 w-16 bg-dark-200 rounded-full"></div>
+              </div>
+              <div class="h-4 w-64 bg-dark-200 rounded mb-2"></div>
+              <div class="h-4 w-48 bg-dark-200 rounded"></div>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <div class="h-8 w-20 bg-dark-200 rounded-lg"></div>
+              <div class="h-8 w-20 bg-dark-200 rounded-lg"></div>
+            </div>
+          </div>
         </div>
       {/each}
     </div>
@@ -251,12 +266,13 @@
     {:else}
       <div class="space-y-4">
         {#each upcomingBookings as booking (booking.id)}
+          {@const statusMeta = getStatusMeta(booking.status)}
           <div class="card">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
                   <h3 class="text-lg font-semibold text-dark-900 truncate">{booking.room?.name || 'Unknown Room'}</h3>
-                  <span class={getStatusBadge(booking.status)}>{booking.status}</span>
+                  <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
                 </div>
                 <p class="text-sm text-dark-500">
                   {formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}
@@ -267,12 +283,12 @@
               </div>
               <div class="flex items-center gap-2">
                 {#if booking.status === 'pending' || booking.status === 'approved'}
-                  <button on:click={() => openRescheduleModal(booking)} class="text-sm text-primary-700 hover:text-primary-600 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
+                  <button on:click={() => openRescheduleModal(booking)} class="btn-ghost-primary">
                     Reschedule
                   </button>
                 {/if}
                 {#if booking.status !== 'cancelled'}
-                  <button on:click={() => cancelBooking(booking.id)} class="text-sm text-red-600 hover:text-red-500 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors">
+                  <button on:click={() => openCancelModal(booking)} class="btn-ghost-danger">
                     Cancel
                   </button>
                 {/if}
@@ -286,28 +302,47 @@
   {:else if activeTab === 'past'}
     {#if pastBookings.length === 0}
       <div class="card text-center py-12">
+        <svg class="w-12 h-12 text-dark-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+        </svg>
         <h3 class="text-lg font-medium text-dark-900 mb-2">No past bookings</h3>
-        <p class="text-dark-500">Your completed and cancelled bookings will appear here.</p>
+        <p class="text-dark-500 mb-6">Your completed and cancelled bookings will appear here.</p>
+        <a href="/#rooms" class="btn-primary">Browse Rooms</a>
       </div>
     {:else}
       <div class="space-y-4">
         {#each pastBookings as booking (booking.id)}
+          {@const statusMeta = getStatusMeta(booking.status)}
+          {@const alreadyReviewed = booking.id ? reviewedBookingIds.has(booking.id) : false}
+          {@const canReview = (booking.status === 'completed' || booking.status === 'paid')}
           <div class="card">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
                   <h3 class="text-lg font-semibold text-dark-900 truncate">{booking.room?.name || 'Unknown Room'}</h3>
-                  <span class={getStatusBadge(booking.status)}>{booking.status}</span>
+                  <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
                 </div>
                 <p class="text-sm text-dark-500">
                   {formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}
                 </p>
+                {#if canReview && !alreadyReviewed}
+                  <p class="mt-1 text-xs text-gold-600">Rate your visit — we'd love your feedback.</p>
+                {/if}
               </div>
               <div class="flex items-center gap-2">
-                {#if booking.status === 'completed' || booking.status === 'paid'}
-                  <button on:click={() => openReviewModal(booking)} class="text-sm text-primary-700 hover:text-primary-600 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors">
-                    Leave Review
-                  </button>
+                {#if canReview}
+                  {#if alreadyReviewed}
+                    <span class="inline-flex items-center gap-1 text-xs text-green-700">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Reviewed
+                    </span>
+                  {:else}
+                    <button on:click={() => openReviewModal(booking)} class="btn-ghost-primary">
+                      Leave Review
+                    </button>
+                  {/if}
                 {/if}
               </div>
             </div>
@@ -319,8 +354,12 @@
   {:else if activeTab === 'reviews'}
     {#if reviews.length === 0}
       <div class="card text-center py-12">
+        <svg class="w-12 h-12 text-dark-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.915a1 1 0 00.95-.69l1.519-4.674z" />
+        </svg>
         <h3 class="text-lg font-medium text-dark-900 mb-2">No reviews yet</h3>
-        <p class="text-dark-500">Complete a booking to leave a review.</p>
+        <p class="text-dark-500 mb-6">Complete a booking to leave a review.</p>
+        <a href="/#rooms" class="btn-primary">Browse Rooms</a>
       </div>
     {:else}
       <div class="space-y-4">
@@ -352,6 +391,9 @@
   {:else if activeTab === 'reports'}
     {#if reports.length === 0}
       <div class="card text-center py-12">
+        <svg class="w-12 h-12 text-dark-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
         <h3 class="text-lg font-medium text-dark-900 mb-2">No reports</h3>
         <p class="text-dark-500 mb-6">You haven't submitted any reports yet.</p>
         <button on:click={() => openReportModal()} class="btn-primary">Submit a Report</button>
@@ -359,12 +401,13 @@
     {:else}
       <div class="space-y-4">
         {#each reports as report (report.id)}
+          {@const reportMeta = getReportStatusMeta(report.status)}
           <div class="card">
             <div class="flex items-start justify-between gap-4">
               <div class="flex-1">
                 <div class="flex items-center gap-2 mb-1">
                   <h3 class="font-semibold text-dark-900">{report.subject}</h3>
-                  <span class={getReportStatusBadge(report.status)}>{report.status.replace('_', ' ')}</span>
+                  <span class={reportMeta.badgeClass}>{reportMeta.label}</span>
                 </div>
                 <p class="text-sm text-dark-600 line-clamp-2">{report.description}</p>
                 {#if report.admin_response}
@@ -472,5 +515,26 @@
         </button>
       </div>
     </form>
+  {/if}
+</Modal>
+
+<!-- Cancel Confirmation Modal -->
+<Modal isOpen={showCancelModal} title="Cancel Booking" on:close={() => showCancelModal = false}>
+  {#if cancelBooking}
+    <div class="space-y-4">
+      <div class="bg-dark-50 border border-dark-200 rounded-lg p-3">
+        <p class="text-sm text-dark-600">{cancelBooking.room?.name}</p>
+        <p class="text-sm text-dark-900">{formatDate(cancelBooking.date)} · {formatTime(cancelBooking.start_time)} - {formatTime(cancelBooking.end_time)}</p>
+      </div>
+      <p class="text-xs text-dark-500">
+        Are you sure you want to cancel this booking? Payment is non-refundable. This cannot be undone.
+      </p>
+      <div class="flex gap-3 pt-2">
+        <button type="button" on:click={() => showCancelModal = false} class="btn-secondary flex-1">Keep Booking</button>
+        <button type="submit" disabled={cancelLoading} class="btn-danger flex-1" on:click={submitCancel}>
+          {cancelLoading ? 'Cancelling...' : 'Yes, Cancel'}
+        </button>
+      </div>
+    </div>
   {/if}
 </Modal>

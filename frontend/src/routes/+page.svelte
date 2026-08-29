@@ -59,9 +59,10 @@
   <div class="absolute inset-0 bg-white"></div>
   <div class="absolute top-0 right-0 w-[600px] h-[600px] bg-primary-200/40 rounded-full blur-3xl"></div>
   <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-gold-400/20 rounded-full blur-3xl"></div>
+  <div class="absolute bottom-[-2px] left-0 right-0 h-16 bg-primary-800" style="clip-path: polygon(0 100%, 100% 0, 100% 100%);"></div>
 
   <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+    <div class="grid grid-cols-1 lg:grid-cols-[5fr_4fr] gap-12 items-center">
       <div>
         <div class="inline-flex items-center gap-2 bg-primary-50 border border-primary-200 rounded-full px-4 py-1.5 mb-6">
           <span class="w-2 h-2 bg-gold-500 rounded-full animate-pulse"></span>
@@ -83,6 +84,10 @@
           </a>
         </div>
 
+        <p class="mt-4 text-sm text-dark-500">
+          No payment today — pay on-site once your booking is approved.
+        </p>
+
         <div class="flex items-center gap-8 mt-12 pt-8 border-t border-dark-200">
           <div>
             <div class="text-2xl font-bold text-dark-900">{rooms.length}</div>
@@ -99,7 +104,7 @@
         </div>
       </div>
 
-      <div class="relative hidden lg:block">
+      <div class="relative hidden lg:block lg:-mr-16 lg:mt-20">
         <div class="aspect-[4/3] bg-white rounded-2xl overflow-hidden border border-dark-200 shadow-2xl">
           {#if rooms.length > 0}
             <img src={getRoomImage(rooms[0].name)} alt={rooms[0].name} class="w-full h-full object-cover" />
@@ -114,7 +119,7 @@
             </div>
           {/if}
         </div>
-        <div class="absolute -bottom-6 -left-6 bg-white border border-dark-200 rounded-xl p-4 shadow-xl">
+        <div class="absolute -bottom-8 -left-8 bg-white border border-dark-200 rounded-xl p-4 shadow-xl">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <svg class="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,16 +140,19 @@
 <!-- ==================== ROOMS SECTION ==================== -->
 <section id="rooms" class="py-24 bg-gradient-to-br from-primary-800 via-primary-700 to-primary-900">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-16">
-      <span class="text-primary-200 text-sm font-semibold uppercase tracking-wider">Our Spaces</span>
+    <div class="mb-16 lg:max-w-2xl">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="w-1.5 h-10 bg-gold-500 rounded-full"></span>
+        <span class="text-primary-200 text-sm font-semibold uppercase tracking-wider">Our Spaces</span>
+      </div>
       <h2 class="text-3xl md:text-4xl font-bold text-white mt-2 mb-4">Rooms Built for Success</h2>
-      <p class="text-primary-100 max-w-2xl mx-auto">
+      <p class="text-primary-100">
         From intimate meetings to large-scale presentations, our professionally designed rooms provide the perfect environment for your business.
       </p>
     </div>
 
     {#if loading}
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
         {#each [1, 2] as _}
           <div class="card animate-pulse">
             <div class="aspect-video bg-dark-200 rounded-lg mb-4"></div>
@@ -155,14 +163,16 @@
         {/each}
       </div>
     {:else}
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
         {#each rooms as room (room.id)}
-        <RoomCard
-          {room}
-          on:book={(event) => openBooking(event.detail)}
-        />
-      {/each}
+          <RoomCard {room} on:book={(event) => openBooking(event.detail)} />
+        {/each}
       </div>
+      {#if rooms.length === 0}
+        <div class="text-center py-16">
+          <p class="text-primary-100">Rooms are being prepared. Check back soon.</p>
+        </div>
+      {/if}
     {/if}
   </div>
 </section>
@@ -170,26 +180,28 @@
 <!-- ==================== PLANS / PRICING SECTION ==================== -->
 <section id="plans" class="py-24">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-16">
-      <span class="text-primary-600 text-sm font-semibold uppercase tracking-wider">Pricing</span>
-      <h2 class="text-3xl md:text-4xl font-bold text-dark-900 mt-2 mb-4">Flexible Plans for Every Need</h2>
-      <p class="text-dark-500 max-w-2xl mx-auto">
-        Choose the plan that works for you. All plans include access to our premium amenities. Payment is made on-site.
-      </p>
-    </div>
-
-    {#if !loading && plans.length > 0}
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-        {#each plans as plan, i (plan.id)}
-          <PlanCard {plan} selected={i === 1} />
-        {/each}
+    <div class="grid grid-cols-1 lg:grid-cols-[2fr_9fr] gap-12 items-start">
+      <div class="lg:pr-8">
+        <span class="text-primary-600 text-sm font-semibold uppercase tracking-wider">Pricing</span>
+        <h2 class="text-3xl md:text-4xl font-bold text-dark-900 mt-2 mb-4 leading-tight">Flexible Plans for Every Need</h2>
+        <p class="text-dark-500 leading-relaxed">
+          Choose the plan that works for you. All plans include access to our premium amenities. Payment is made on-site.
+        </p>
       </div>
-    {/if}
 
-    <div class="text-center mt-8">
-      <p class="text-sm text-dark-500">
-        All payments are processed on-site. Cancellations are allowed but payments are non-refundable.
-      </p>
+      <div>
+        {#if !loading && plans.length > 0}
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {#each plans as plan, i (plan.id)}
+              <PlanCard {plan} selected={i === 1} />
+            {/each}
+          </div>
+        {/if}
+
+        <p class="mt-8 text-sm text-dark-500">
+          All payments are processed on-site. Cancellations are allowed but payments are non-refundable.
+        </p>
+      </div>
     </div>
   </div>
 </section>
@@ -197,7 +209,7 @@
 <!-- ==================== ABOUT / WHY CHOOSE US ==================== -->
 <section id="about" class="py-24 bg-gradient-to-br from-primary-800 via-primary-700 to-primary-900">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+    <div class="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-16 items-start">
       <div>
         <span class="text-primary-200 text-sm font-semibold uppercase tracking-wider">Why Choose Us</span>
         <h2 class="text-3xl md:text-4xl font-bold text-white mt-2 mb-6">A Collaborative Environment with a Thriving Community</h2>
@@ -256,7 +268,7 @@
         </div>
       </div>
 
-      <div class="space-y-6">
+      <div class="space-y-6 lg:mt-16">
         <div class="grid grid-cols-2 gap-4">
           <div class="card text-center p-6">
             <div class="text-3xl font-bold text-primary-600 mb-1">16</div>
@@ -320,9 +332,9 @@
 </section>
 
 <!-- ==================== MAP / LOCATION SECTION ==================== -->
-<section id="location" class="py-24 bg-gradient-to-br from-primary-800 via-primary-700 to-primary-900">
+<section id="location" class="py-24 bg-gradient-to-br from-primary-800 via-primary-700 to-primary-900 overflow-hidden">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+    <div class="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-12 items-start">
       <div>
         <span class="text-primary-200 text-sm font-semibold uppercase tracking-wider">Find Us</span>
         <h2 class="text-3xl md:text-4xl font-bold text-white mt-2 mb-6">Conveniently Located</h2>
@@ -371,7 +383,7 @@
         </div>
       </div>
 
-      <div class="h-[400px] rounded-xl overflow-hidden border border-white/20">
+      <div class="h-[400px] lg:h-full min-h-[400px] lg:min-h-[520px] lg:-mr-24 rounded-xl overflow-hidden border border-white/20 shadow-2xl lg:mt-16">
         <Map lat={-37.8136} lng={144.9631} zoom={15} title="BAI Business Hub" />
       </div>
     </div>
@@ -385,20 +397,22 @@
   />
 
 <!-- ==================== CTA SECTION ==================== -->
-<section class="py-24">
+<section class="py-20">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="relative bg-gradient-to-r from-primary-700 to-primary-900 rounded-2xl p-12 text-center overflow-hidden shadow-xl">
+    <div class="relative bg-gradient-to-r from-primary-700 to-primary-900 rounded-2xl px-8 sm:px-12 py-12 lg:py-16 overflow-hidden shadow-xl">
       <div class="absolute top-0 right-0 w-64 h-64 bg-gold-500/20 rounded-full blur-3xl"></div>
-      <div class="relative">
-        <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Ready to Get Started?</h2>
-        <p class="text-primary-100 max-w-xl mx-auto mb-8">
-          Join BAI Business Hub today and experience premium workspaces designed for your success.
-        </p>
-        <div class="flex flex-wrap justify-center gap-4">
-          <a href="/auth/register" class="bg-white text-primary-700 font-medium px-8 py-3 rounded-lg transition-colors duration-200 hover:bg-primary-50">
+      <div class="relative grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-8 items-center">
+        <div>
+          <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Ready to Get Started?</h2>
+          <p class="text-primary-100 max-w-xl leading-relaxed">
+            Join BAI Business Hub today and experience premium workspaces designed for your success.
+          </p>
+        </div>
+        <div class="flex flex-col sm:flex-row lg:flex-col lg:justify-center gap-4">
+          <a href="/auth/register" class="bg-white text-primary-700 font-medium px-8 py-3 rounded-lg text-center transition-colors duration-200 hover:bg-primary-50">
             Create Account
           </a>
-          <a href="#plans" class="border border-primary-200 text-white font-medium px-8 py-3 rounded-lg transition-colors duration-200 hover:bg-primary-700">
+          <a href="#plans" class="border border-primary-200 text-white font-medium px-8 py-3 rounded-lg text-center transition-colors duration-200 hover:bg-primary-700">
             View Plans
           </a>
         </div>

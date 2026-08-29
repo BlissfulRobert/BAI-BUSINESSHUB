@@ -152,12 +152,37 @@ export function isDateFullyBooked(existingBookingsForDate: Booking[]): boolean {
 	return hourlySlots.length > 0 && hourlySlots.every((slot) => !slot.available);
 }
 
+export type DayAvailability = 'free' | 'partial' | 'full';
+
+/**
+ * Classifies how booked a single day is based on free 1-hour blocks:
+ * - 'free'    -> no bookings at all
+ * - 'partial' -> some 1-hour blocks free, some booked
+ * - 'full'    -> no free 1-hour block left in business hours
+ */
+export function getDayAvailability(existingBookingsForDate: Booking[]): DayAvailability {
+	const hourlySlots = buildTimeSlots(1, existingBookingsForDate);
+	if (hourlySlots.length === 0) return 'free';
+	if (hourlySlots.every((slot) => !slot.available)) return 'full';
+	if (hourlySlots.some((slot) => !slot.available)) return 'partial';
+	return 'free';
+}
+
+/**
+ * Number of free 1-hour blocks available on a day (0 if fully booked).
+ * Used for the calendar availability teaser.
+ */
+export function getFreeHourCount(existingBookingsForDate: Booking[]): number {
+	return buildTimeSlots(1, existingBookingsForDate).filter((slot) => slot.available).length;
+}
+
 export interface CalendarDay {
 	iso: string;
 	dayOfMonth: number;
 	isCurrentMonth: boolean;
 	isPast: boolean;
 	isFullyBooked: boolean;
+	availability: DayAvailability;
 }
 
 /**
@@ -182,13 +207,15 @@ export function buildMonthGrid(
 		d.setDate(gridStart.getDate() + i);
 		const iso = toISODate(d);
 		const bookingsForDay = bookingsByDate[iso] ?? [];
+		const availability = getDayAvailability(bookingsForDay);
 
 		return {
 			iso,
 			dayOfMonth: d.getDate(),
 			isCurrentMonth: d.getMonth() === month,
 			isPast: iso < today,
-			isFullyBooked: isDateFullyBooked(bookingsForDay)
+			isFullyBooked: availability === 'full',
+			availability
 		};
 	});
 }
