@@ -3,7 +3,7 @@
 	import Calendar from '$lib/components/Calendar.svelte';
 	import { supabase } from '$lib/supabase/client';
 	import { profile } from '$lib/stores/auth';
-	import { CALENDAR_LOOKAHEAD_DAYS, HUB_CLOSE_HOUR, HUB_OPEN_HOUR, getSeriesDates, rangesOverlap } from '$lib/utils/dates';
+	import { CALENDAR_LOOKAHEAD_DAYS, HUB_CLOSE_HOUR, HUB_OPEN_HOUR, buildTimeSlots, getSeriesDates, rangesOverlap } from '$lib/utils/dates';
 	import { formatDate, getRoomImage } from '$lib/utils/format';
 	import type { Room, Plan, Booking } from '$lib/types/database';
 
@@ -63,6 +63,12 @@
 
 	$: isSeriesPlan = selectedPlan?.slug === 'weekly' || selectedPlan?.slug === 'monthly';
 	$: seriesDates = selectedPlan && selectedDate ? getSeriesDates(selectedDate, selectedPlan) : [];
+
+	// Available 1-hour blocks for the selected (start) date — used for the
+	// calendar "teaser" preview. Independent of plan duration on purpose.
+	$: availableHourSlots = selectedDate
+		? (buildTimeSlots(1, bookingsByDate[selectedDate] ?? []).filter((s) => s.available) ?? [])
+		: [];
 
 	// Fetch this room's blocking bookings so the modal's calendar reflects real
 	// availability (mirrors the room page's server query). If the anon key can't
@@ -490,6 +496,35 @@
 						disableWeekends={selectedPlan?.slug === 'weekly'}
 						on:selectDate={(e) => (selectedDate = e.detail)}
 					/>
+
+					{#if selectedDate}
+						<div class="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-4">
+							<p class="mb-2 text-sm font-medium text-dark-700">
+								Available hours on
+								<span class="font-semibold text-dark-900">{formatDate(selectedDate)}</span>
+							</p>
+							{#if availableHourSlots.length > 0}
+								<div class="flex flex-wrap gap-1.5">
+									{#each availableHourSlots as slot}
+										<span
+											class="rounded-md border border-primary-200 bg-white px-2 py-1 text-xs font-medium text-primary-800"
+										>
+											{slot.label}
+										</span>
+									{/each}
+								</div>
+							{:else}
+								<p class="text-xs text-dark-500">
+									No 1-hour blocks available on this day.
+								</p>
+							{/if}
+							<p class="mt-2 text-xs text-dark-400">
+								{isSeriesPlan && seriesDates.length > 1
+									? 'Preview shows the start date. The time you pick must be free across all days in the range.'
+									: 'This is just a preview — pick your exact time on the next step.'}
+							</p>
+						</div>
+					{/if}
 
 					{#if isSeriesPlan && seriesDates.length > 1}
 						<div class="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-4">

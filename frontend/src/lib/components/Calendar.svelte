@@ -121,13 +121,15 @@
 					{isRangeEnd ? '!bg-dark-800 !text-white' : ''}
 					{selectedDate === day.iso || isRangeStart ? '!bg-primary-600 !text-white' : ''}"
 			>
-				{day.dayOfMonth}
-				{#if day.isCurrentMonth && day.isFullyBooked && !day.isPast}
-					<span
-						class="absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-red-500"
-						title="Fully booked"
-					></span>
-				{/if}
+			{day.dayOfMonth}
+			{#if day.isCurrentMonth && !day.isPast && day.availability !== 'free'}
+				<span
+					class="absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full {day.availability === 'full'
+						? 'bg-red-500'
+						: 'bg-amber-500'}"
+					title={day.availability === 'full' ? 'Fully booked' : 'Partially booked'}
+				></span>
+			{/if}
 			</button>
 		{/each}
 	</div>
@@ -136,6 +138,10 @@
 		<span class="flex items-center gap-1">
 			<span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
 			Fully booked
+		</span>
+		<span class="flex items-center gap-1">
+			<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+			Partially booked
 		</span>
 		{#if rangeDates.length > 1}
 			<span class="flex items-center gap-1">
