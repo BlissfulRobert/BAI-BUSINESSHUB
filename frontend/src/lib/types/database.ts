@@ -30,6 +30,7 @@ export interface Plan {
 
 export type BookingStatus = 'pending' | 'approved' | 'paid' | 'completed' | 'cancelled';
 export type PaymentMethod = 'onsite';
+export type BookingChargeType = 'membership' | 'additional' | null;
 
 export interface Booking {
 	id: string;
@@ -45,11 +46,13 @@ export interface Booking {
 	purpose: string | null;
 	status: BookingStatus;
 	payment_method: PaymentMethod;
+	charge_type: BookingChargeType; // membership-covered, additional usage, or null
 	notes: string | null;
 	created_at: string;
 	updated_at: string;
-	// Relations populated by Supabase joins (e.g. `*, room:rooms(*), profile:profiles(*)`).
+	// Relations populated by Supabase joins (e.g. `*, room:rooms(*), plan:plans(*), profile:profiles(*)`).
 	room?: Room;
+	plan?: Plan;
 	profile?: { full_name: string; email: string };
 }
 
@@ -61,6 +64,31 @@ export interface Profile {
 	role: 'admin' | 'client';
 	is_approved: boolean;
 	created_at: string;
+	membership?: Membership;
+}
+
+// Section 7: one optional membership per user with monthly included hours per
+// room class. Calendar-month cycle, no rollover.
+export interface Membership {
+	id: string;
+	user_id: string;
+	included_conference_hours: number;
+	included_meeting_hours: number;
+	is_active: boolean;
+	created_at: string;
+	updated_at: string;
+	usage?: MembershipUsage[];
+}
+
+// Sections 6 & 8 ledger: one balance per membership + room class + month.
+export interface MembershipUsage {
+	id: string;
+	membership_id: string;
+	period_start: string; // ISO date
+	period_end: string; // ISO date
+	room_slug: 'conference-room' | 'meeting-room';
+	used_minutes: number;
+	updated_at: string;
 }
 
 export interface GalleryImage {

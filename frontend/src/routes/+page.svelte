@@ -279,7 +279,7 @@
             <div class="text-sm text-dark-500">Meeting Seats</div>
           </div>
           <div class="card text-center p-6">
-            <div class="text-3xl font-bold text-primary-600 mb-1">3</div>
+            <div class="text-3xl font-bold text-primary-600 mb-1">5</div>
             <div class="text-sm text-dark-500">Booking Plans</div>
           </div>
           <div class="card text-center p-6">

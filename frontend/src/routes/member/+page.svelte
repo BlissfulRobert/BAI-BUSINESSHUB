@@ -3,14 +3,17 @@
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
   import { user, profile, isLoading } from '$lib/stores/auth';
-  import type { Booking, Review, Report } from '$lib/types/database';
+  import type { Booking, Membership, MembershipUsage, Review, Report } from '$lib/types/database';
   import { formatDate, formatTime, formatDuration, formatCurrency } from '$lib/utils/format';
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
+  import { quoteForStoredBooking, usageMeter } from '$lib/utils/pricing';
   import Modal from '$lib/components/Modal.svelte';
 
   let bookings: Booking[] = [];
   let reviews: Review[] = [];
   let reports: Report[] = [];
+  let membership: Membership | null = null;
+  let membershipUsage: MembershipUsage[] = [];
   let loading = true;
   let activeTab: 'upcoming' | 'past' | 'reviews' | 'reports' = 'upcoming';
 
@@ -64,10 +67,10 @@
   });
 
   async function loadData() {
-    const [bookingsRes, reviewsRes, reportsRes] = await Promise.all([
+    const [bookingsRes, reviewsRes, reportsRes, membershipRes, usageRes] = await Promise.all([
       supabase
         .from('bookings')
-        .select('*, room:rooms(*)')
+        .select('*, room:rooms(*), plan:plans(*)')
         .eq('user_id', $user!.id)
         .order('date', { ascending: false }),
       supabase
@@ -79,12 +82,19 @@
         .from('reports')
         .select('*')
         .eq('user_id', $user!.id)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }),
+      supabase.from('memberships').select('*').eq('user_id', $user!.id).maybeSingle(),
+      supabase
+        .from('membership_usage')
+        .select('*')
+        .order('period_start', { ascending: false })
     ]);
 
     bookings = bookingsRes.data ?? [];
     reviews = reviewsRes.data ?? [];
     reports = reportsRes.data ?? [];
+    membership = (membershipRes.error ? null : membershipRes.data) ?? null;
+    membershipUsage = usageRes.data ?? [];
     loading = false;
   }
 
@@ -203,12 +213,33 @@
     return b.date < today || b.status === 'cancelled';
   });
 
+  // Weekly/Monthly create one booking row per day. Charge (and label) the
+  // series once — only the earliest row of each series shows the flat total.
+  $: seriesFirstIds = (() => {
+    const seen = new Set<string>();
+    const first = new Set<string>();
+    for (const b of bookings) {
+      const key =
+        b.plan?.slug === 'weekly' || b.plan?.slug === 'monthly'
+          ? `${b.plan_id ?? ''}::${b.room_id}`
+          : b.id;
+      if (!seen.has(key)) {
+        seen.add(key);
+        first.add(b.id);
+      }
+    }
+    return first;
+  })();
+
   $: memberTabs = [
     { key: 'upcoming', label: 'Upcoming', count: upcomingBookings.length },
     { key: 'past', label: 'Past', count: pastBookings.length },
     { key: 'reviews', label: 'Reviews', count: reviews.length },
     { key: 'reports', label: 'Reports', count: reports.length },
   ] as { key: 'upcoming' | 'past' | 'reviews' | 'reports'; label: string; count: number }[];
+
+  $: confMeter = membership?.is_active ? usageMeter(membership, membershipUsage, 'conference-room') : null;
+  $: meetMeter = membership?.is_active ? usageMeter(membership, membershipUsage, 'meeting-room') : null;
 </script>
 
 <svelte:head>
@@ -225,6 +256,56 @@
       Report Issue
     </button>
   </div>
+
+  {#if membership?.is_active && !loading}
+    <div class="card mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <h2 class="text-lg font-semibold text-dark-900">My Membership</h2>
+            <span class="badge-green">Active</span>
+          </div>
+          <p class="text-xs text-dark-500">Included hours reset each calendar month (no rollover). Additional usage is billed at standard rates.</p>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-4 mt-4">
+        {#if confMeter}
+          <div class="bg-dark-50 border border-dark-200 rounded-xl p-4">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-sm font-medium text-dark-900">Conference Room</p>
+              <p class="text-xs text-dark-500">{confMeter.remainingLabel} left</p>
+            </div>
+            <div class="h-2 bg-dark-200 rounded-full overflow-hidden">
+              <div
+                class="h-full {confMeter.exhausted ? 'bg-gold-500' : 'bg-primary-600'} transition-all"
+                style="width: {Math.min(100, (confMeter.usedMinutes / confMeter.includedMinutes) * 100)}%"
+              ></div>
+            </div>
+            <p class="text-xs text-dark-500 mt-1.5">
+              {confMeter.exhausted ? 'Included hours used — overage bills at standard rate' : `Remaining this month: ${confMeter.remainingLabel}`}
+            </p>
+          </div>
+        {/if}
+        {#if meetMeter}
+          <div class="bg-dark-50 border border-dark-200 rounded-xl p-4">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-sm font-medium text-dark-900">Meeting Room</p>
+              <p class="text-xs text-dark-500">{meetMeter.remainingLabel} left</p>
+            </div>
+            <div class="h-2 bg-dark-200 rounded-full overflow-hidden">
+              <div
+                class="h-full {meetMeter.exhausted ? 'bg-gold-500' : 'bg-primary-600'} transition-all"
+                style="width: {Math.min(100, (meetMeter.usedMinutes / meetMeter.includedMinutes) * 100)}%"
+              ></div>
+            </div>
+            <p class="text-xs text-dark-500 mt-1.5">
+              {meetMeter.exhausted ? 'Included hours used — overage bills at standard rate' : `Remaining this month: ${meetMeter.remainingLabel}`}
+            </p>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <div class="flex gap-1 bg-dark-100 border border-dark-200 rounded-lg p-1 mb-8 overflow-x-auto">
     {#each memberTabs as tab}
@@ -289,7 +370,13 @@
                   {formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}
                 </p>
                 <p class="text-sm text-dark-500">
-                  {formatDuration(booking.start_time, booking.end_time)} · {booking.room ? formatCurrency(booking.room.price_per_hour) : ''}/hr
+                  {#if seriesFirstIds.has(booking.id)}
+                    {#if booking.plan}
+                      {booking.plan.duration_label} · {formatCurrency(quoteForStoredBooking(booking).total)}
+                    {/if}
+                  {:else}
+                    {formatDuration(booking.start_time, booking.end_time)} · {booking.room ? formatCurrency(booking.room.price_per_hour) : ''}/hr
+                  {/if}
                 </p>
               </div>
               <div class="flex items-center gap-2">

@@ -3,8 +3,23 @@ import type { RequestHandler } from './$types';
 import { createServerClient } from '$lib/supabase/server';
 import { isPastDate, rangesOverlap, timeToMinutes } from '$lib/utils/dates';
 import { sendMail, getAdminEmails } from '$lib/server/mail';
+import type { BookingChargeType, Membership } from '$lib/types/database';
 
 const BLOCKING_STATUSES = ['pending', 'approved', 'paid', 'completed'];
+// Membership included-hours only cover on-demand (hourly/period) bookings;
+// Weekly/Monthly passes are separate purchases. (See Room Rental Rate Structure.)
+const ON_DEMAND_PLAN_SLUGS = ['hourly', 'half-day', 'full-day'];
+
+function monthStart(isoDate: string): string {
+	const [y, m] = isoDate.split('-');
+	return `${y}-${m}-01`;
+}
+
+function monthEnd(isoDate: string): string {
+	const [y, m] = isoDate.split('-');
+	const lastDay = new Date(Date.UTC(+y, +m, 0)).getUTCDate();
+	return `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
+}
 
 export const POST: RequestHandler = async ({ request }) => {
 	const supabase = createServerClient();
@@ -103,6 +118,77 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
+	// ==========================================================
+	// MEMBERSHIP / INCLUDED-HOURS COVERAGE (Sections 6, 7, 8)
+	// Determine, per date, whether the booking is covered by the user's
+	// membership included hours ('membership'), bills as additional usage at
+	// standard rates ('additional'), or is a separate pass purchase (null).
+	// ==========================================================
+	const { data: room } = await supabase
+		.from('rooms')
+		.select('id, slug, name')
+		.eq('id', room_id)
+		.single();
+
+	const { data: plan } = plan_id
+		? await supabase.from('plans').select('id, slug, name').eq('id', plan_id).single()
+		: { data: null };
+
+	const { data: membershipRows } = await supabase
+		.from('memberships')
+		.select('*')
+		.eq('user_id', user.id)
+		.eq('is_active', true)
+		.limit(1);
+	const membership: Membership | null = membershipRows?.[0] ?? null;
+
+	const isOnDemand =
+		!!plan && ON_DEMAND_PLAN_SLUGS.includes(plan.slug as string);
+	const minutes = timeToMinutes(end_time) - timeToMinutes(start_time);
+
+	const chargeTypeByDate: Record<string, BookingChargeType> = {};
+	let usageByPeriod: { period_start: string; period_end: string; minutes: number }[] = [];
+
+	if (isOnDemand && membership && room) {
+		const roomSlug = room.slug as 'conference-room' | 'meeting-room';
+		const includedMinutes = Math.round(
+			(roomSlug === 'conference-room'
+				? membership.included_conference_hours
+				: membership.included_meeting_hours) * 60
+		);
+
+		const monthStarts = [...new Set(dates.map((d: string) => monthStart(d)))];
+		const { data: usageRows } = await supabase
+			.from('membership_usage')
+			.select('period_start, used_minutes')
+			.eq('membership_id', membership.id)
+			.eq('room_slug', roomSlug)
+			.in('period_start', monthStarts);
+
+		const usedByPeriod: Record<string, number> = {};
+		(usageRows ?? []).forEach((u: { period_start: string; used_minutes: number }) => {
+			usedByPeriod[u.period_start] = u.used_minutes;
+		});
+
+		// Whole-booking coverage (Option A): a booking is covered only if the
+		// full block fits within the remaining included hours; otherwise the
+		// entire booking is billed as additional usage.
+		const usedAccum: Record<string, number> = {};
+		for (const date of dates) {
+			const ps = monthStart(date);
+			const used = (usedAccum[ps] ?? 0) + (usedByPeriod[ps] ?? 0);
+			if (used + minutes <= includedMinutes) {
+				chargeTypeByDate[date] = 'membership';
+				usedAccum[ps] = (usedAccum[ps] ?? 0) + minutes;
+				const existing = usageByPeriod.find((u) => u.period_start === ps);
+				if (existing) existing.minutes += minutes;
+				else usageByPeriod.push({ period_start: ps, period_end: monthEnd(date), minutes });
+			} else {
+				chargeTypeByDate[date] = 'additional';
+			}
+		}
+	}
+
 	// A single multi-row INSERT is one statement, so Postgres commits or
 	// rolls back the whole series together if something else (e.g. a
 	// constraint violation) fails partway through.
@@ -118,7 +204,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		guest_phone: guest_phone ?? null,
 		purpose: purpose ?? null,
 		status: 'pending',
-		payment_method: 'onsite'
+		payment_method: 'onsite',
+		charge_type: chargeTypeByDate[date] ?? null
 	}));
 
 	const { data: bookings, error: insertError } = await supabase.from('bookings').insert(rows).select();
@@ -127,14 +214,28 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ message: 'Could not create the booking. Please try again.' }, { status: 500 });
 	}
 
+	// Increment the ledger for membership-covered hours. Uses the atomic
+	// add_membership_usage RPC so concurrent bookings don't overwrite each
+	// other's usage. Fire-and-forget with error logging; a ledger hiccup must
+	// never block the success response.
+	if (membership && usageByPeriod.length > 0) {
+		for (const u of usageByPeriod) {
+			const { error: usageError } = await supabase.rpc('add_membership_usage', {
+				p_membership_id: membership.id,
+				p_period_start: u.period_start,
+				p_period_end: u.period_end,
+				p_room_slug: room?.slug,
+				p_minutes: u.minutes
+			});
+			if (usageError) {
+				console.error('membership usage increment failed:', usageError);
+			}
+		}
+	}
+
 	// Notify all admins about the new booking. Fire-and-forget with error
 	// logging so a mail failure never blocks the successful booking response.
-	const { data: room } = await supabase
-		.from('rooms')
-		.select('name')
-		.eq('id', room_id)
-		.single();
-
+	// `room` was already loaded for membership coverage above.
 	const admins = await getAdminEmails(supabase);
 	if (admins.length > 0) {
 		const dateList = dates.join(', ');
