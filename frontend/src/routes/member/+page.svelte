@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
-  import { user, profile } from '$lib/stores/auth';
+  import { user, profile, isLoading } from '$lib/stores/auth';
   import type { Booking, Review, Report } from '$lib/types/database';
   import { formatDate, formatTime, formatDuration, formatCurrency } from '$lib/utils/format';
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
@@ -39,11 +39,11 @@
   $: isLoggedIn = !!$user;
   $: reviewedBookingIds = new Set(reviews.map((r) => r.booking_id));
 
+  $: if (!$isLoading && !isLoggedIn) {
+    goto('/auth/login');
+  }
+
   onMount(async () => {
-    if (!isLoggedIn) {
-      goto('/auth/login');
-      return;
-    }
     await loadData();
   });
 

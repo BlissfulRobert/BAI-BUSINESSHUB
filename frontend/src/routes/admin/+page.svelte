@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
-  import { user, profile } from '$lib/stores/auth';
+  import { user, profile, isLoading } from '$lib/stores/auth';
   import type { Booking, Room, Profile, Report, GalleryImage, Plan } from '$lib/types/database';
   import { formatDate, formatTime, formatCurrency, getRoomImage } from '$lib/utils/format';
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
@@ -54,11 +54,11 @@
   $: isLoggedIn = !!$user;
   $: isAdmin = $profile?.role === 'admin';
 
+  $: if (!$isLoading && (!isLoggedIn || !isAdmin)) {
+    goto('/auth/login');
+  }
+
   onMount(async () => {
-    if (!isLoggedIn || !isAdmin) {
-      goto('/auth/login');
-      return;
-    }
     await loadData();
   });
 

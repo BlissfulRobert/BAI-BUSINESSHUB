@@ -122,8 +122,8 @@
               </a>
             {/if}
             <a
-                href="/member"
-                class="px-3 py-2 text-sm text-primary-700 hover:text-primary-900 transition-colors rounded-lg hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              href="/member"
+              class="px-3 py-2 text-sm text-primary-700 hover:text-primary-900 transition-colors rounded-lg hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             >
               My Bookings
             </a>
@@ -184,9 +184,7 @@
     </nav>
 
     {#if mobileMenuOpen}
-      <div
-        class="lg:hidden border-t border-gray-200 bg-white backdrop-blur-xl"
-      >
+      <div class="lg:hidden border-t border-gray-200 bg-white backdrop-blur-xl">
         <div class="px-4 py-4 space-y-1">
           {#each navLinks as link}
             <a
@@ -391,7 +389,7 @@
                   d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                 />
               </svg>
-              info@baibusinesshub.com
+              hello@baibusinesshub.com.au
             </li>
             <li class="flex items-center gap-2">
               <svg
