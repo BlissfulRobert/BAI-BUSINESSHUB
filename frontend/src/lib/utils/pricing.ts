@@ -17,6 +17,9 @@ import { timeToMinutes } from '$lib/utils/dates';
 export const HALF_DAY_HOURS = 4;
 export const FULL_DAY_HOURS = 8;
 
+/** Promotional discount applied to the weekly rate (5% off the configured weekly price). */
+export const WEEKLY_DISCOUNT_RATE = 0.05;
+
 export interface RateCard {
 	halfDay: number;
 	fullDay: number;
@@ -57,6 +60,16 @@ function configuredPlanPrice(room: Room, plan: Plan | null, key: 'weekly' | 'mon
 	return plan ? plan.price : 0;
 }
 
+/** Whether the plan is the discounted Weekly pass. */
+export function isWeekly(plan: Plan | null): boolean {
+	return plan?.slug === 'weekly';
+}
+
+/** Weekly rate with the advertised 5% promotional discount applied. */
+function weeklyDiscountedPrice(room: Room, plan: Plan | null): number {
+	return round2(configuredPlanPrice(room, plan, 'weekly') * (1 - WEEKLY_DISCOUNT_RATE));
+}
+
 /**
  * Reference price shown on a plan card for a given room. Hourly/Half-day/
  * Full-day use the room's own rates so the card matches the room being booked;
@@ -68,7 +81,7 @@ export function planReferencePrice(room: Room, plan: Plan): number {
 
 	switch (plan.slug) {
 		case 'weekly':
-			return configuredPlanPrice(room, plan, 'weekly');
+			return weeklyDiscountedPrice(room, plan);
 		case 'monthly':
 			return configuredPlanPrice(room, plan, 'monthly');
 		case 'half-day':
@@ -95,12 +108,12 @@ export function quoteForBooking(
 ): Quote {
 	const totalMinutes = timeToMinutes(endTime) - timeToMinutes(startTime);
 
-	// Weekly/Monthly: per-room configured rate.
+	// Weekly/Monthly: per-room configured rate (Weekly gets the 5% promo discount).
 	if (isConfiguredPlan(plan) && plan) {
-		const key = plan.slug === 'weekly' ? 'weekly' : 'monthly';
-		const price = configuredPlanPrice(room, plan, key);
+		const isWk = isWeekly(plan);
+		const price = isWk ? weeklyDiscountedPrice(room, plan) : configuredPlanPrice(room, plan, 'monthly');
 		return {
-			label: plan.duration_label || plan.name,
+			label: isWk ? `${plan.duration_label || plan.name} (−5%)` : plan.duration_label || plan.name,
 			unitPrice: price,
 			quantity: 1,
 			total: price
@@ -140,9 +153,14 @@ export function quoteForStoredBooking(booking: Booking): Quote {
 	const plan = booking.plan ?? null;
 
 	if (plan && isConfiguredPlan(plan)) {
-		const key = plan.slug === 'weekly' ? 'weekly' : 'monthly';
-		const price = configuredPlanPrice(room, plan, key);
-		return { label: plan.duration_label || plan.name, unitPrice: price, quantity: 1, total: price };
+		const isWk = isWeekly(plan);
+		const price = isWk ? weeklyDiscountedPrice(room, plan) : configuredPlanPrice(room, plan, 'monthly');
+		return {
+			label: isWk ? `${plan.duration_label || plan.name} (−5%)` : plan.duration_label || plan.name,
+			unitPrice: price,
+			quantity: 1,
+			total: price
+		};
 	}
 
 	return quoteForBooking(room, plan, booking.start_time, booking.end_time);
