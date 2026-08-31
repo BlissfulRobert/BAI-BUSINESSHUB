@@ -36,6 +36,22 @@
   let cancelBooking: Booking | null = null;
   let cancelLoading = false;
 
+  async function postApi(path: string, payload: unknown): Promise<boolean> {
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) return false;
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  }
+
   $: isLoggedIn = !!$user;
   $: reviewedBookingIds = new Set(reviews.map((r) => r.booking_id));
 
@@ -81,16 +97,16 @@
     if (!cancelBooking) return;
     cancelLoading = true;
 
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'cancelled' })
-      .eq('id', cancelBooking.id);
+    const ok = await postApi('/api/bookings/status', {
+      bookingId: cancelBooking.id,
+      status: 'cancelled'
+    });
 
     cancelLoading = false;
     showCancelModal = false;
     cancelBooking = null;
 
-    if (!error) await loadData();
+    if (ok) await loadData();
   }
 
   function openReviewModal(booking: Booking) {
@@ -130,19 +146,16 @@
   async function submitReport() {
     reportLoading = true;
 
-    const { error } = await supabase
-      .from('reports')
-      .insert({
-        user_id: $user!.id,
-        booking_id: reportBooking?.id || null,
-        subject: reportSubject,
-        description: reportDescription
-      });
+    const ok = await postApi('/api/reports', {
+      booking_id: reportBooking?.id || null,
+      subject: reportSubject,
+      description: reportDescription
+    });
 
     reportLoading = false;
     showReportModal = false;
 
-    if (!error) await loadData();
+    if (ok) await loadData();
   }
 
   function openRescheduleModal(booking: Booking) {
@@ -166,20 +179,18 @@
     const endM = endMinutes % 60;
     const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 
-    const { error } = await supabase
-      .from('bookings')
-      .update({
-        date: rescheduleDate,
-        start_time: rescheduleTime,
-        end_time: endTime,
-        status: 'pending'
-      })
-      .eq('id', rescheduleBooking.id);
+    const ok = await postApi('/api/bookings/status', {
+      bookingId: rescheduleBooking.id,
+      date: rescheduleDate,
+      start_time: rescheduleTime,
+      end_time: endTime,
+      status: 'pending'
+    });
 
     rescheduleLoading = false;
     showRescheduleModal = false;
 
-    if (!error) await loadData();
+    if (ok) await loadData();
   }
 
   $: upcomingBookings = bookings.filter(b => {
