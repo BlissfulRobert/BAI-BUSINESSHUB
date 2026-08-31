@@ -44,7 +44,7 @@ VALUES
     'Repeated room access across the working week.',
     40,
     'Weekly',
-    180.00,
+    1600.00,
     ARRAY['5 weekdays (Mon-Fri)', 'Priority room booking', 'Conference or Meeting Room', 'WiFi & AV Equipment'],
     true,
     4
@@ -55,7 +55,7 @@ VALUES
     'Recurring room access for the month.',
     176,
     'Monthly',
-    550.00,
+    6400.00,
     ARRAY['Daily access for the month', 'Priority room booking', 'Conference or Meeting Room', 'WiFi & AV Equipment'],
     true,
     5
@@ -68,8 +68,8 @@ INSERT INTO rooms (name, slug, description, capacity, price_per_hour, layout, am
 VALUES (
   'Conference Room',
   'conference-room',
-  'Our spacious conference room is perfect for larger meetings, presentations, and board meetings. Features a large boardroom-style table with comfortable seating, state-of-the-art AV equipment, and natural lighting. Ideal for teams of up to 10 people.',
-  10,
+  'Our spacious conference room is perfect for larger meetings, presentations, and board meetings. Features a large boardroom-style table with comfortable seating, state-of-the-art AV equipment, and natural lighting. Ideal for teams of up to 16 people.',
+  16,
   50.00,
   'Boardroom',
   ARRAY['Air Conditioning', 'Natural Lighting', 'Whiteboard', 'Flipchart', 'Kitchen Access', 'WiFi', 'Parking'],
@@ -82,7 +82,7 @@ VALUES (
   'Meeting Room',
   'meeting-room',
   'A professional meeting room designed for focused discussions and small team collaborations. Perfect for client meetings, interviews, and brainstorming sessions. Features modern decor and essential meeting amenities.',
-  4,
+  8,
   30.00,
   'Rectangular',
   ARRAY['Air Conditioning', 'Whiteboard', 'WiFi', 'Coffee & Tea'],
@@ -96,8 +96,8 @@ VALUES (
 -- ============================================
 INSERT INTO gallery (title, description, image_url, category, sort_order, is_active)
 VALUES
-  ('Conference Room Overview', 'Our premium conference room with boardroom seating for 10', '/office.png', 'room', 1, true),
-  ('Meeting Room Interior', 'Modern meeting room with comfortable seating for 4', '/meeting.png', 'room', 2, true),
+  ('Conference Room Overview', 'Our premium conference room with boardroom seating for 16', '/office.png', 'room', 1, true),
+  ('Meeting Room Interior', 'Modern meeting room with comfortable seating for 8', '/meeting.png', 'room', 2, true),
   ('Hub Entrance', 'Welcome to BAI Business Hub', '/images/placeholder-entrance.jpg', 'facility', 3, true),
   ('Common Area', 'Collaborative common area for networking', '/images/placeholder-common.jpg', 'facility', 4, true),
   ('Kitchen & Break Room', 'Fully equipped kitchen for members', '/images/placeholder-kitchen.jpg', 'facility', 5, true),
