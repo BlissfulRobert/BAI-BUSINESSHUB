@@ -244,10 +244,19 @@
 		return `${hours} hour${hours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
 	}
 
-	function handleStartTimeChange() {
-		// Reset end time whenever start time changes.
-		// This prevents an invalid end time from remaining selected.
+	// Custom dropdown state (native <option> can't render mixed text colors).
+	let startOpen = false;
+	let endOpen = false;
+
+	function selectStartTime(value: string) {
+		startTime = value;
 		endTime = '';
+		startOpen = false;
+	}
+
+	function selectEndTime(value: string) {
+		endTime = value;
+		endOpen = false;
 	}
 
 	function selectPlan(plan: Plan) {
@@ -631,41 +640,91 @@
 							<label for="start-time" class="mb-1.5 block text-xs text-dark-500">
 								Start Time
 							</label>
-							<select
-								id="start-time"
-								bind:value={startTime}
-								on:change={handleStartTimeChange}
-								class="input"
-							>
-								<option value="">Select start time</option>
-								{#each timeSlots as time}
-									{@const value = getTimeValue(time)}
-									<option value={value} disabled={bookedStarts.has(value)}>
-										{time}{bookedStarts.has(value) ? ' (Booked)' : ''}
-									</option>
-								{/each}
-							</select>
+							<div class="relative">
+								<button
+									id="start-time"
+									type="button"
+									class="input flex w-full items-center justify-between text-left disabled:cursor-not-allowed disabled:opacity-50"
+									on:click={() => (startOpen = !startOpen)}
+								>
+									<span>{startTime ? formatDisplayTime(startTime) : 'Select start time'}</span>
+									<span class="ml-2 text-dark-400">{startOpen ? '▲' : '▼'}</span>
+								</button>
+								{#if startOpen}
+									<button
+										type="button"
+										tabindex="-1"
+										aria-hidden="true"
+										class="fixed inset-0 z-20 cursor-default"
+										on:click={() => (startOpen = false)}
+									></button>
+									<div
+										class="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-dark-200 bg-white shadow-lg"
+									>
+										{#each timeSlots as time}
+											{@const value = getTimeValue(time)}
+											{@const booked = bookedStarts.has(value)}
+											<button
+												type="button"
+												class="block w-full px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:text-dark-400 disabled:hover:bg-transparent enabled:hover:bg-dark-50"
+												class:bg-primary-50={value === startTime}
+												disabled={booked}
+												on:click={() => selectStartTime(value)}
+											>
+												{time}
+												{#if booked}
+													<span class="font-medium text-red-600">(Booked)</span>
+												{/if}
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
 						</div>
 
 						<div>
 							<label for="end-time" class="mb-1.5 block text-xs text-dark-500">
 								End Time
 							</label>
-							<select
-								id="end-time"
-								bind:value={endTime}
-								disabled={!startTime}
-								class="input disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								<option value="">
-									{startTime ? 'Select end time' : 'Select start time first'}
-								</option>
-								{#each availableEndTimes as { time, endValue, booked }}
-									<option value={endValue} disabled={booked}>
-										{time}{booked ? ' (Booked)' : ''}
-									</option>
-								{/each}
-							</select>
+							<div class="relative">
+								<button
+									id="end-time"
+									type="button"
+									class="input flex w-full items-center justify-between text-left disabled:cursor-not-allowed disabled:opacity-50"
+									disabled={!startTime}
+									on:click={() => (endOpen = !endOpen)}
+								>
+									<span>{endTime ? formatDisplayTime(endTime) : (startTime ? 'Select end time' : 'Select start time first')}</span>
+									<span class="ml-2 text-dark-400">{endOpen ? '▲' : '▼'}</span>
+								</button>
+								{#if endOpen}
+									<button
+										type="button"
+										tabindex="-1"
+										aria-hidden="true"
+										class="fixed inset-0 z-20 cursor-default"
+										on:click={() => (endOpen = false)}
+									></button>
+									<div
+										class="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-dark-200 bg-white shadow-lg"
+									>
+										{#each availableEndTimes as { time, endValue, booked }}
+											<button
+												type="button"
+												class="block w-full px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:text-dark-400 disabled:hover:bg-transparent enabled:hover:bg-dark-50"
+												class:bg-primary-50={endValue === endTime}
+												disabled={booked}
+												on:click={() => selectEndTime(endValue)}
+											>
+												{time}
+												{#if booked}
+													<span class="font-medium text-red-600">(Booked)</span>
+												{/if}
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
 						</div>
 					</div>
 
