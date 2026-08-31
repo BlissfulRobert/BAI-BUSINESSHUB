@@ -1,8 +1,8 @@
 import type { Booking, Plan } from '$lib/types/database';
 
 /** Business hours the hub is bookable within. Adjust to match real operating hours. */
-export const HUB_OPEN_HOUR = 6; // 6:00 AM
-export const HUB_CLOSE_HOUR = 20; // 8:00 PM
+export const HUB_OPEN_HOUR = 9; // 9:00 AM
+export const HUB_CLOSE_HOUR = 17; // 5:00 PM
 const SLOT_STEP_MINUTES = 60;
 
 /** How far ahead a series start date can be picked. */
@@ -140,6 +140,29 @@ export function getSeriesDates(startIso: string, plan: Plan): string[] {
 		return dates;
 	}
 	return [startIso];
+}
+
+/**
+ * Weekly series: 5 weekdays rolling forward from the chosen start, skipping
+ * weekends and any day that's already fully booked (no free 1-hour block
+ * left), so the pass is still 5 rentable days even when some days are taken.
+ * Sequential so a Tuesday start rolls Mon–Fri of the following weeks.
+ */
+export function getWeeklySeriesDates(
+	startIso: string,
+	bookingsByDate: Record<string, Booking[]>
+): string[] {
+	const dates: string[] = [];
+	let cur = startIso;
+	let guard = 0;
+	while (dates.length < 5 && guard < 366) {
+		guard++;
+		if (!isWeekend(cur) && !isDateFullyBooked(bookingsByDate[cur] ?? [])) {
+			dates.push(cur);
+		}
+		cur = addDays(cur, 1);
+	}
+	return dates;
 }
 
 /**

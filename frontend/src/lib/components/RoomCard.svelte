@@ -8,9 +8,9 @@
   const dispatch = createEventDispatcher();
 
   function formatRate(value: number) {
-    return new Intl.NumberFormat("en-PH", {
+    return new Intl.NumberFormat("en-AU", {
       style: "currency",
-      currency: "PHP",
+      currency: "AUD",
     }).format(value);
   }
 

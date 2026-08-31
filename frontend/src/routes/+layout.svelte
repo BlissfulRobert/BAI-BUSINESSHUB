@@ -79,16 +79,16 @@
 
 <div class="min-h-screen flex flex-col">
   <header
-    class="border-b border-primary-800 bg-primary-700 backdrop-blur-xl sticky top-0 z-50"
+    class="border-b border-gray-200 bg-white backdrop-blur-xl sticky top-0 z-50"
   >
     <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-20 relative">
         <div class="flex items-center gap-10 flex-1">
           <a href="/" class="flex items-center">
             <img
-              src="/bai-business-logo-wide.png"
+              src="/bai-business-logo.png"
               alt="BAI Business Hub"
-              class="h-20 w-auto max-w-[360px] brightness-0 invert"
+              class="h-12 w-auto"
             />
           </a>
           <div
@@ -97,10 +97,10 @@
             {#each navLinks as link}
               <a
                 href={link.path}
-                class={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${
+                class={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                   link.active
-                    ? "text-white bg-white/15"
-                    : "text-primary-100 hover:text-white hover:bg-white/10"
+                    ? "text-white bg-primary-600"
+                    : "text-primary-700 hover:text-primary-900 hover:bg-primary-50"
                 }`}
               >
                 {link.label}
@@ -116,43 +116,46 @@
             {#if isAdmin}
               <a
                 href="/admin"
-                class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                class="px-3 py-2 text-sm text-primary-700 hover:text-primary-900 transition-colors rounded-lg hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 Admin
               </a>
             {/if}
             <a
               href="/member"
-              class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              class="px-3 py-2 text-sm text-primary-700 hover:text-primary-900 transition-colors rounded-lg hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             >
               My Bookings
             </a>
-            <div class="w-px h-6 bg-white/20"></div>
-            <span class="text-sm text-primary-100 max-w-[120px] truncate">
+            <div class="w-px h-6 bg-primary-200"></div>
+            <span class="text-sm text-primary-700 max-w-[120px] truncate">
               {$profile?.full_name || $user?.email}
             </span>
             <button
               on:click={handleLogout}
-              class="text-sm px-3 py-1.5 rounded-lg border border-white/20 text-white bg-white/10 hover:bg-white/20 transition-colors"
+              class="text-sm px-3 py-1.5 rounded-lg border border-primary-300 text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors"
             >
               Logout
             </button>
           {:else}
             <a
               href="/auth/login"
-              class="px-3 py-2 text-sm text-primary-100 hover:text-white transition-colors rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              class="px-3 py-2 text-sm text-primary-700 hover:text-primary-900 transition-colors rounded-lg hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             >
               Login
             </a>
           {/if}
-          <a href="/#rooms" class="bg-white text-primary-700 hover:bg-primary-50 text-sm font-medium px-4 py-1.5 rounded-lg transition-colors duration-200">
+          <a
+            href="/#rooms"
+            class="bg-primary-600 text-white hover:bg-primary-700 text-sm font-medium px-4 py-1.5 rounded-lg transition-colors duration-200"
+          >
             Book a room
           </a>
         </div>
 
         <button
           on:click={toggleMobileMenu}
-          class="lg:hidden p-2 text-white hover:text-white rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          class="lg:hidden p-2 text-primary-700 hover:text-primary-900 rounded-lg hover:bg-primary-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         >
           <svg
             class="w-6 h-6"
@@ -181,18 +184,16 @@
     </nav>
 
     {#if mobileMenuOpen}
-      <div
-        class="lg:hidden border-t border-primary-700 bg-primary-800 backdrop-blur-xl"
-      >
+      <div class="lg:hidden border-t border-gray-200 bg-white backdrop-blur-xl">
         <div class="px-4 py-4 space-y-1">
           {#each navLinks as link}
             <a
               href={link.path}
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60
+              class="block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500
                 {link.active
-                ? 'text-white bg-white/15'
-                : 'text-primary-100 hover:text-white hover:bg-white/10'}"
+                ? 'text-white bg-primary-600'
+                : 'text-primary-700 hover:text-primary-900 hover:bg-primary-50'}"
             >
               {link.label}
             </a>
@@ -200,32 +201,32 @@
           <a
             href="/#rooms"
             on:click={closeMobileMenu}
-            class="block px-3 py-2.5 rounded-lg text-sm font-medium text-white hover:text-white hover:bg-white/10"
+            class="block px-3 py-2.5 rounded-lg text-sm font-medium text-primary-700 hover:text-primary-900 hover:bg-primary-50"
           >
             Book a room
           </a>
-          <hr class="border-primary-700 my-2" />
+          <hr class="border-gray-200 my-2" />
           {#if isLoggedIn}
             {#if isAdmin}
               <a
                 href="/admin"
                 on:click={closeMobileMenu}
-                class="block px-3 py-2.5 text-sm text-primary-100 hover:text-white hover:bg-white/10 rounded-lg"
+                class="block px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg"
                 >Admin Panel</a
               >
             {/if}
             <a
               href="/member"
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 text-sm text-primary-100 hover:text-white hover:bg-white/10 rounded-lg"
+              class="block px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg"
               >My Bookings</a
             >
-            <p class="px-3 pt-1 text-sm text-primary-100 truncate">
+            <p class="px-3 pt-1 text-sm text-primary-700 truncate">
               {$profile?.full_name || $user?.email}
             </p>
             <button
               on:click={handleLogout}
-              class="w-full text-left px-3 py-2.5 text-sm text-primary-100 hover:text-white hover:bg-white/10 rounded-lg"
+              class="w-full text-left px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg"
             >
               Logout
             </button>
@@ -233,13 +234,13 @@
             <a
               href="/auth/login"
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 text-sm text-primary-100 hover:text-white hover:bg-white/10 rounded-lg"
+              class="block px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg"
               >Login</a
             >
             <a
               href="/auth/register"
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 text-sm text-white hover:text-white hover:bg-white/10 rounded-lg font-medium"
+              class="block px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg font-medium"
               >Get Started</a
             >
           {/if}
@@ -257,12 +258,11 @@
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
         <div>
           <div class="flex items-center gap-2 mb-4">
-            <div
-              class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center"
-            >
-              <span class="text-white font-bold text-sm">B</span>
-            </div>
-            <span class="text-lg font-bold text-white">BAI Business Hub</span>
+            <img
+              src="/bai-business-logo-wide.png"
+              alt="BAI Business Hub"
+              class="h-12 w-auto max-w-[300px] brightness-0 invert"
+            />
           </div>
           <p class="text-sm text-dark-400 leading-relaxed">
             Premium workspaces designed to boost productivity. Professional
@@ -389,7 +389,7 @@
                   d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                 />
               </svg>
-              info@baibusinesshub.com
+              hello@baibusinesshub.com.au
             </li>
             <li class="flex items-center gap-2">
               <svg

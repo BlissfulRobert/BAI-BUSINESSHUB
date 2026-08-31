@@ -5,7 +5,7 @@
 	export let selected = false;
 
 	function formatPrice(value: number) {
-		return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value);
+		return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(value);
 	}
 </script>
 

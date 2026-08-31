@@ -2,15 +2,18 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
-  import { user, profile } from '$lib/stores/auth';
-  import type { Booking, Room, Profile, Report, GalleryImage, Plan } from '$lib/types/database';
+  import { user, profile, isLoading } from '$lib/stores/auth';
+  import type { Booking, Room, Profile, Report, GalleryImage, Plan, Membership, MembershipUsage } from '$lib/types/database';
   import { formatDate, formatTime, formatCurrency, getRoomImage } from '$lib/utils/format';
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
+  import { quoteForStoredBooking, usageMeter, formatMinutes } from '$lib/utils/pricing';
   import Modal from '$lib/components/Modal.svelte';
 
   let bookings: Booking[] = [];
   let rooms: Room[] = [];
   let members: Profile[] = [];
+  let memberships: Membership[] = [];
+  let membershipUsage: MembershipUsage[] = [];
   let reports: Report[] = [];
   let galleryImages: GalleryImage[] = [];
   let plans: Plan[] = [];
@@ -35,6 +38,22 @@
   let selectedBookingIds = new Set<string>();
   let bulkLoading = false;
 
+  async function postApi(path: string, payload: unknown): Promise<boolean> {
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) return false;
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  }
+
   let showImageUploadModal = false;
   let uploadTitle = '';
   let uploadDescription = '';
@@ -54,22 +73,24 @@
   $: isLoggedIn = !!$user;
   $: isAdmin = $profile?.role === 'admin';
 
+  $: if (!$isLoading && (!isLoggedIn || !isAdmin)) {
+    goto('/auth/login');
+  }
+
   onMount(async () => {
-    if (!isLoggedIn || !isAdmin) {
-      goto('/auth/login');
-      return;
-    }
     await loadData();
   });
 
   async function loadData() {
-    const [bookingsRes, roomsRes, membersRes, reportsRes, galleryRes, plansRes] = await Promise.all([
-      supabase.from('bookings').select('*, room:rooms(*), profile:profiles(*)').order('date', { ascending: false }),
+    const [bookingsRes, roomsRes, membersRes, reportsRes, galleryRes, plansRes, membershipsRes, usageRes] = await Promise.all([
+      supabase.from('bookings').select('*, room:rooms(*), plan:plans(*), profile:profiles(*)').order('date', { ascending: false }),
       supabase.from('rooms').select('*').order('name'),
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('reports').select('*, profile:profiles(full_name, email)').order('created_at', { ascending: false }),
       supabase.from('gallery').select('*').order('sort_order'),
-      supabase.from('plans').select('*').order('sort_order')
+      supabase.from('plans').select('*').order('sort_order'),
+      supabase.from('memberships').select('*'),
+      supabase.from('membership_usage').select('*').order('period_start', { ascending: false })
     ]);
 
     bookings = bookingsRes.data ?? [];
@@ -78,12 +99,14 @@
     reports = reportsRes.data ?? [];
     galleryImages = galleryRes.data ?? [];
     plans = plansRes.data ?? [];
+    memberships = membershipsRes.data ?? [];
+    membershipUsage = usageRes.data ?? [];
     loading = false;
   }
 
   async function updateBookingStatus(bookingId: string, status: string) {
-    const { error } = await supabase.from('bookings').update({ status }).eq('id', bookingId);
-    if (!error) await loadData();
+    const ok = await postApi('/api/bookings/status', { bookingId, status });
+    if (ok) await loadData();
   }
 
   async function toggleRoomActive(roomId: string, currentStatus: boolean) {
@@ -95,6 +118,28 @@
     const { error } = await supabase.from('profiles').update({ is_approved: true }).eq('id', memberId);
     if (!error) await loadData();
   }
+
+  async function grantMembership(memberId: string) {
+    const { error } = await supabase.from('memberships').insert({
+      user_id: memberId,
+      included_conference_hours: 4,
+      included_meeting_hours: 4,
+      is_active: true
+    });
+    if (error) alert('Could not grant membership: ' + error.message);
+    else await loadData();
+  }
+
+  async function revokeMembership(membershipId: string) {
+    const { error } = await supabase
+      .from('memberships')
+      .update({ is_active: false })
+      .eq('id', membershipId);
+    if (error) alert('Could not revoke membership: ' + error.message);
+    else await loadData();
+  }
+
+  $: membershipFor = (memberId: string) => memberships.find((m) => m.user_id === memberId && m.is_active) ?? null;
 
   async function handleImageUpload() {
     if (!uploadFile) return;
@@ -146,18 +191,15 @@
     if (!reportToRespond) return;
     responseLoading = true;
 
-    const { error } = await supabase
-      .from('reports')
-      .update({
-        admin_response: adminResponse,
-        status: 'resolved'
-      })
-      .eq('id', reportToRespond.id);
+    const ok = await postApi('/api/reports/respond', {
+      reportId: reportToRespond.id,
+      response: adminResponse
+    });
 
     responseLoading = false;
     showReportResponseModal = false;
 
-    if (!error) await loadData();
+    if (ok) await loadData();
   }
 
   function goToTab(tab: 'overview' | 'bookings' | 'rooms' | 'members' | 'reports' | 'gallery') {
@@ -218,13 +260,10 @@
   async function bulkUpdateStatus(status: string) {
     if (selectedBookingIds.size === 0) return;
     bulkLoading = true;
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status })
-      .in('id', [...selectedBookingIds]);
+    const ok = await postApi('/api/bookings/status', { bookingIds: [...selectedBookingIds], status });
     bulkLoading = false;
     selectedBookingIds = new Set();
-    if (!error) await loadData();
+    if (ok) await loadData();
   }
 
   $: todayBookings = bookings.filter(b => {
@@ -232,14 +271,23 @@
     return b.date === today && b.status !== 'cancelled';
   });
 
-  $: totalRevenue = bookings
-    .filter(b => b.status === 'completed' || b.status === 'paid')
-    .reduce((sum, b) => {
-      const [sh, sm] = b.start_time.split(':').map(Number);
-      const [eh, em] = b.end_time.split(':').map(Number);
-      const hours = ((eh * 60 + em) - (sh * 60 + sm)) / 60;
-      return sum + (b.room?.price_per_hour || 0) * hours;
-    }, 0);
+  $: totalRevenue = (() => {
+    // Price each booking with the same rules as the member quote (per-room
+    // weekly/monthly rates etc.) via quoteForStoredBooking. Weekly/Monthly
+    // create one bookings row per day, so charge each series only once —
+    // group rows by plan+room for those plans and by booking id otherwise.
+    const seen = new Set<string>();
+    return bookings
+      .filter(b => b.status === 'completed' || b.status === 'paid')
+      .reduce((sum, b) => {
+        const slug = b.plan?.slug;
+        const seriesKey =
+          slug === 'weekly' || slug === 'monthly' ? `${b.plan_id ?? ''}::${b.room_id}` : b.id;
+        if (seen.has(seriesKey)) return sum;
+        seen.add(seriesKey);
+        return sum + quoteForStoredBooking(b).total;
+      }, 0);
+  })();
 
   $: pendingMembers = members.filter(m => !m.is_approved);
   $: openReports = reports.filter(r => r.status === 'open');
@@ -601,6 +649,7 @@
     {:else}
       <div class="space-y-3">
         {#each filteredMembers as member (member.id)}
+          {@const mem = membershipFor(member.id)}
           <div class="card">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <div class="flex-1 min-w-0">
@@ -610,6 +659,9 @@
                     {member.is_approved ? 'Approved' : 'Pending'}
                   </span>
                   <span class="badge bg-dark-100 text-dark-600 border-dark-200">{member.role}</span>
+                  {#if mem}
+                    <span class="badge bg-gold-100 text-gold-600 border-gold-200">Member</span>
+                  {/if}
                 </div>
                 <p class="text-sm text-dark-500">{member.email} · {member.phone || 'No phone'}</p>
                 <p class="text-xs text-dark-500">Joined {formatDate(member.created_at)}</p>
@@ -619,9 +671,44 @@
                   <button on:click={() => approveMember(member.id)} class="btn-ghost-green text-sm">
                     Approve
                   </button>
+                {:else if member.role !== 'admin'}
+                  {#if mem}
+                    <button on:click={() => revokeMembership(mem.id)} class="btn-ghost-danger text-sm">
+                      Revoke Membership
+                    </button>
+                  {:else}
+                    <button on:click={() => grantMembership(member.id)} class="btn-ghost-green text-sm">
+                      Grant Membership
+                    </button>
+                  {/if}
                 {/if}
               </div>
             </div>
+
+            {#if mem}
+              {@const conf = usageMeter(mem, membershipUsage.filter((u) => u.membership_id === mem.id), 'conference-room')}
+              {@const meet = usageMeter(mem, membershipUsage.filter((u) => u.membership_id === mem.id), 'meeting-room')}
+              <div class="grid sm:grid-cols-2 gap-3 mt-4">
+                <div class="bg-dark-50 border border-dark-200 rounded-lg p-3">
+                  <div class="flex items-center justify-between mb-1">
+                    <p class="text-xs font-medium text-dark-900">Conference · {conf.remainingLabel} left</p>
+                  </div>
+                  <div class="h-1.5 bg-dark-200 rounded-full overflow-hidden">
+                    <div class="h-full {conf.exhausted ? 'bg-gold-500' : 'bg-primary-600'}" style="width: {Math.min(100, (conf.usedMinutes / conf.includedMinutes) * 100)}%"></div>
+                  </div>
+                  <p class="text-[11px] text-dark-500 mt-1">{conf.usedMinutes > 0 ? 'Used ' + formatMinutes(conf.usedMinutes) + ' this month' : 'No usage this month'}</p>
+                </div>
+                <div class="bg-dark-50 border border-dark-200 rounded-lg p-3">
+                  <div class="flex items-center justify-between mb-1">
+                    <p class="text-xs font-medium text-dark-900">Meeting · {meet.remainingLabel} left</p>
+                  </div>
+                  <div class="h-1.5 bg-dark-200 rounded-full overflow-hidden">
+                    <div class="h-full {meet.exhausted ? 'bg-gold-500' : 'bg-primary-600'}" style="width: {Math.min(100, (meet.usedMinutes / meet.includedMinutes) * 100)}%"></div>
+                  </div>
+                  <p class="text-[11px] text-dark-500 mt-1">{meet.usedMinutes > 0 ? 'Used ' + formatMinutes(meet.usedMinutes) + ' this month' : 'No usage this month'}</p>
+                </div>
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
