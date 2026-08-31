@@ -69,12 +69,13 @@ VALUES (
 );
 
 -- ============================================
--- GALLERY (placeholder images - admin will upload real ones)
+-- GALLERY (room photos use the bundled assets; facility shots are placeholders
+-- for the admin to replace with real uploads)
 -- ============================================
 INSERT INTO gallery (title, description, image_url, category, sort_order, is_active)
 VALUES
-  ('Conference Room Overview', 'Our premium conference room with boardroom seating for 16', '/images/placeholder-conference.jpg', 'room', 1, true),
-  ('Meeting Room Interior', 'Modern meeting room with comfortable seating for 8', '/images/placeholder-meeting.jpg', 'room', 2, true),
+  ('Conference Room Overview', 'Our premium conference room with boardroom seating for 16', '/office.png', 'room', 1, true),
+  ('Meeting Room Interior', 'Modern meeting room with comfortable seating for 8', '/meeting.png', 'room', 2, true),
   ('Hub Entrance', 'Welcome to BAI Business Hub', '/images/placeholder-entrance.jpg', 'facility', 3, true),
   ('Common Area', 'Collaborative common area for networking', '/images/placeholder-common.jpg', 'facility', 4, true),
   ('Kitchen & Break Room', 'Fully equipped kitchen for members', '/images/placeholder-kitchen.jpg', 'facility', 5, true),
