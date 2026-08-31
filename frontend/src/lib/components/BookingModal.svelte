@@ -3,8 +3,9 @@
 	import Calendar from '$lib/components/Calendar.svelte';
 	import { supabase } from '$lib/supabase/client';
 	import { profile } from '$lib/stores/auth';
-	import { CALENDAR_LOOKAHEAD_DAYS, HUB_CLOSE_HOUR, HUB_OPEN_HOUR, buildTimeSlots, getFreeHourCount, getSeriesDates, rangesOverlap } from '$lib/utils/dates';
-	import { formatDate, getRoomImage } from '$lib/utils/format';
+	import { CALENDAR_LOOKAHEAD_DAYS, HUB_CLOSE_HOUR, HUB_OPEN_HOUR, buildTimeSlots, getFreeHourCount, getSeriesDates, getWeeklySeriesDates, rangesOverlap } from '$lib/utils/dates';
+	import { formatDate, getRoomImage, formatCurrency } from '$lib/utils/format';
+	import { quoteForBooking, planReferencePrice } from '$lib/utils/pricing';
 	import type { Room, Plan, Booking } from '$lib/types/database';
 
 	export let isOpen = false;
@@ -75,7 +76,20 @@
 	let bookingsByDate: Record<string, Booking[]> = {};
 
 	$: isSeriesPlan = selectedPlan?.slug === 'weekly' || selectedPlan?.slug === 'monthly';
-	$: seriesDates = selectedPlan && selectedDate ? getSeriesDates(selectedDate, selectedPlan) : [];
+	// Full-day and weekly passes cover the whole business day, so their time is
+	// fixed to 9 AM – 5 PM and the time selectors are hidden.
+	$: fixedTimePlan = selectedPlan?.slug === 'full-day' || selectedPlan?.slug === 'weekly';
+
+	// Auto-fill 9 AM – 5 PM for fixed-time plans once a date is picked.
+	$: if (fixedTimePlan && selectedDate) {
+		startTime = '09:00';
+		endTime = '17:00';
+	}
+	$: seriesDates = selectedPlan && selectedDate
+		? (selectedPlan.slug === 'weekly'
+			? getWeeklySeriesDates(selectedDate, bookingsByDate)
+			: getSeriesDates(selectedDate, selectedPlan))
+		: [];
 
 	// Available 1-hour blocks for the selected (start) date — used for the
 	// calendar "teaser" preview. Independent of plan duration on purpose.
@@ -129,7 +143,7 @@
 	function generateTimeSlots() {
 		const slots: string[] = [];
 
-		for (let hour = openingHour; hour < closingHour; hour++) {
+		for (let hour = openingHour; hour <= closingHour; hour++) {
 			slots.push(formatTime(hour, 0));
 		}
 
@@ -209,14 +223,33 @@
 
 	// End time must always be after start time, and must not create a range that
 	// overlaps an existing booking.
+	// For the Hourly plan the member can only book a 30-minute or 1-hour block,
+	// so the end options are limited to start +30min and start +60min.
+	$: isHourlyPlan = selectedPlan?.slug === 'hourly';
 	$: availableEndTimes = (() => {
 		if (!startTime) return [];
 		const start = timeToMinutes(startTime);
+
+		if (isHourlyPlan) {
+			return [30, 60]
+				.map((offsetMin) => {
+					const endValue = minutesToTime(start + offsetMin);
+					const display = formatDisplayTime(endValue);
+					return {
+						time: display,
+						endValue,
+						booked: isSlotBooked(start, start + offsetMin),
+						hint: offsetMin === 30 ? '30 minutes' : '1 hour'
+					};
+				})
+				.filter(({ endValue }) => timeToMinutes(endValue) <= HUB_CLOSE_HOUR * 60);
+		}
+
 		return timeSlots
 			.filter((time) => getTimeValue(time) > startTime)
 			.map((time) => {
 				const endValue = getTimeValue(time);
-				return { time, endValue, booked: isSlotBooked(start, timeToMinutes(endValue)) };
+				return { time, endValue, booked: isSlotBooked(start, timeToMinutes(endValue)), hint: undefined };
 			});
 	})();
 
@@ -225,6 +258,12 @@
 		startTime && endTime
 			? calculateDuration(startTime, endTime)
 			: '';
+
+	// Live price quote based on room, plan, and selected times.
+	$: quote =
+		room && startTime && endTime
+			? quoteForBooking(room, selectedPlan, startTime, endTime)
+			: null;
 
 	function calculateDuration(start: string, end: string): string {
 		const startMinutes = timeToMinutes(start);
@@ -415,7 +454,7 @@
 						{room.name}
 					</h3>
 					<p class="text-xs text-dark-500">
-						Up to {room.capacity} people · ₱{room.price_per_hour}/hour
+						Up to {room.capacity} people · {formatCurrency(room.price_per_hour)}/hour
 					</p>
 				</div>
 			</div>
@@ -514,7 +553,7 @@
 									{/if}
 								</div>
 								<div class="shrink-0 text-right">
-									<div class="font-bold text-dark-900">₱{plan.price}</div>
+									<div class="font-bold text-dark-900">{formatCurrency(planReferencePrice(room, plan))}</div>
 									<div class="mt-0.5 text-xs text-dark-500">
 										{plan.duration_label}
 									</div>
@@ -632,9 +671,17 @@
 				<!-- Time -->
 				<div>
 					<p class="mb-3 text-sm font-medium text-dark-600">
-						Select Time
+						{fixedTimePlan ? 'Time' : 'Select Time'}
 					</p>
 
+					{#if fixedTimePlan}
+						<div class="rounded-xl border border-primary-100 bg-primary-50 p-4 text-sm text-dark-700">
+							This {selectedPlan?.name?.toLowerCase() ?? 'pass'} covers the whole business day
+							<span class="font-semibold text-dark-900">
+								{formatDisplayTime(startTime)} – {formatDisplayTime(endTime)}
+							</span>.
+						</div>
+					{:else}
 					<div class="grid grid-cols-1 gap-4">
 						<div>
 							<label for="start-time" class="mb-1.5 block text-xs text-dark-500">
@@ -708,7 +755,7 @@
 									<div
 										class="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-dark-200 bg-white shadow-lg"
 									>
-										{#each availableEndTimes as { time, endValue, booked }}
+										{#each availableEndTimes as { time, endValue, booked, hint }}
 											<button
 												type="button"
 												class="block w-full px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:text-dark-400 disabled:hover:bg-transparent enabled:hover:bg-dark-50"
@@ -717,6 +764,9 @@
 												on:click={() => selectEndTime(endValue)}
 											>
 												{time}
+												{#if hint}
+													<span class="ml-1.5 text-xs text-dark-400">({hint})</span>
+												{/if}
 												{#if booked}
 													<span class="font-medium text-red-600">(Booked)</span>
 												{/if}
@@ -727,6 +777,7 @@
 							</div>
 						</div>
 					</div>
+					{/if}
 
 					{#if bookingDuration}
 						<div class="mt-4 inline-flex items-center rounded-lg bg-primary-50 border border-primary-100 px-3 py-2 text-sm text-primary-800">
@@ -735,10 +786,24 @@
 						</div>
 					{/if}
 
+					{#if quote}
+						<div class="mt-4 rounded-xl border border-primary-200 bg-white p-4">
+							<div class="flex items-center justify-between">
+								<div>
+									<p class="text-xs text-dark-500">Estimated total</p>
+									<p class="text-xs text-dark-400">{quote.label}</p>
+								</div>
+								<p class="text-2xl font-bold text-dark-900">{formatCurrency(quote.total)}</p>
+							</div>
+						</div>
+					{/if}
+
+					{#if !fixedTimePlan}
 					<p class="mt-4 text-xs text-dark-500">
 						Greyed-out times marked
 						<span class="font-medium text-red-600">(Booked)</span> are already taken and can't be selected.
 					</p>
+					{/if}
 				</div>
 
 
@@ -860,6 +925,15 @@
 						<span class="text-dark-500">Duration</span>
 						<span class="font-medium text-dark-900">{bookingDuration}</span>
 					</div>
+					{#if quote}
+						<div class="mt-1 flex justify-between gap-4 rounded-lg bg-white px-3 py-2">
+							<span class="text-dark-500">Charge</span>
+							<span class="text-right">
+								<span class="block text-sm font-semibold text-dark-900">{quote.label}</span>
+								<span class="block text-xs text-dark-500">{formatCurrency(quote.total)}</span>
+							</span>
+						</div>
+					{/if}
 					<div class="flex justify-between gap-4">
 						<span class="text-dark-500">Name</span>
 						<span class="font-medium text-dark-900">{guestName}</span>
