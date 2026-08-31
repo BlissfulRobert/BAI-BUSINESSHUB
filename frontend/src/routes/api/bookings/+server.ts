@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createServerClient } from '$lib/supabase/server';
 import { isPastDate, rangesOverlap, timeToMinutes } from '$lib/utils/dates';
+import { sendMail, getAdminEmails } from '$lib/server/mail';
 
 const BLOCKING_STATUSES = ['pending', 'approved', 'paid', 'completed'];
 
@@ -124,6 +125,24 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (insertError) {
 		return json({ message: 'Could not create the booking. Please try again.' }, { status: 500 });
+	}
+
+	// Notify all admins about the new booking. Fire-and-forget with error
+	// logging so a mail failure never blocks the successful booking response.
+	const { data: room } = await supabase
+		.from('rooms')
+		.select('name')
+		.eq('id', room_id)
+		.single();
+
+	const admins = await getAdminEmails(supabase);
+	if (admins.length > 0) {
+		const dateList = dates.join(', ');
+		sendMail({
+			to: admins,
+			subject: 'New booking submitted',
+			text: `A new booking has been submitted for ${room?.name ?? 'a room'} on ${dateList} from ${start_time} to ${end_time} by ${guest_name} (${guest_email}). It is pending approval.`
+		});
 	}
 
 	return json({ bookings }, { status: 201 });

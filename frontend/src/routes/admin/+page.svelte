@@ -35,6 +35,22 @@
   let selectedBookingIds = new Set<string>();
   let bulkLoading = false;
 
+  async function postApi(path: string, payload: unknown): Promise<boolean> {
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) return false;
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  }
+
   let showImageUploadModal = false;
   let uploadTitle = '';
   let uploadDescription = '';
@@ -82,8 +98,8 @@
   }
 
   async function updateBookingStatus(bookingId: string, status: string) {
-    const { error } = await supabase.from('bookings').update({ status }).eq('id', bookingId);
-    if (!error) await loadData();
+    const ok = await postApi('/api/bookings/status', { bookingId, status });
+    if (ok) await loadData();
   }
 
   async function toggleRoomActive(roomId: string, currentStatus: boolean) {
@@ -146,18 +162,15 @@
     if (!reportToRespond) return;
     responseLoading = true;
 
-    const { error } = await supabase
-      .from('reports')
-      .update({
-        admin_response: adminResponse,
-        status: 'resolved'
-      })
-      .eq('id', reportToRespond.id);
+    const ok = await postApi('/api/reports/respond', {
+      reportId: reportToRespond.id,
+      response: adminResponse
+    });
 
     responseLoading = false;
     showReportResponseModal = false;
 
-    if (!error) await loadData();
+    if (ok) await loadData();
   }
 
   function goToTab(tab: 'overview' | 'bookings' | 'rooms' | 'members' | 'reports' | 'gallery') {
@@ -218,13 +231,10 @@
   async function bulkUpdateStatus(status: string) {
     if (selectedBookingIds.size === 0) return;
     bulkLoading = true;
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status })
-      .in('id', [...selectedBookingIds]);
+    const ok = await postApi('/api/bookings/status', { bookingIds: [...selectedBookingIds], status });
     bulkLoading = false;
     selectedBookingIds = new Set();
-    if (!error) await loadData();
+    if (ok) await loadData();
   }
 
   $: todayBookings = bookings.filter(b => {
