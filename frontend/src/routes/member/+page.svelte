@@ -3,10 +3,11 @@
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
   import { user, profile, isLoading } from '$lib/stores/auth';
-  import type { Booking, Membership, MembershipUsage, Review, Report } from '$lib/types/database';
+  import type { Booking, Membership, MembershipUsage, Review, Report, Room, Plan } from '$lib/types/database';
   import { formatDate, formatTime, formatDuration, formatCurrency } from '$lib/utils/format';
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
   import { quoteForStoredBooking, usageMeter } from '$lib/utils/pricing';
+  import { groupBookings, dateRangeLabel } from '$lib/utils/booking-groups';
   import Modal from '$lib/components/Modal.svelte';
 
   let bookings: Booking[] = [];
@@ -30,13 +31,13 @@
   let reportLoading = false;
 
   let showRescheduleModal = false;
-  let rescheduleBooking: Booking | null = null;
+  let rescheduleGroup: MemberGroup | null = null;
   let rescheduleDate = '';
   let rescheduleTime = '';
   let rescheduleLoading = false;
 
   let showCancelModal = false;
-  let cancelBooking: Booking | null = null;
+  let cancelGroup: MemberGroup | null = null;
   let cancelLoading = false;
 
   async function postApi(path: string, payload: unknown): Promise<boolean> {
@@ -98,23 +99,27 @@
     loading = false;
   }
 
-  function openCancelModal(booking: Booking) {
-    cancelBooking = booking;
+  function openCancelModal(group: MemberGroup) {
+    cancelGroup = group;
     showCancelModal = true;
   }
 
   async function submitCancel() {
-    if (!cancelBooking) return;
+    if (!cancelGroup) return;
     cancelLoading = true;
 
-    const ok = await postApi('/api/bookings/status', {
-      bookingId: cancelBooking.id,
-      status: 'cancelled'
-    });
+    let ok = true;
+    for (const b of cancelGroup.bookings) {
+      const r = await postApi('/api/bookings/status', {
+        bookingId: b.id,
+        status: 'cancelled'
+      });
+      if (!r) ok = false;
+    }
 
     cancelLoading = false;
     showCancelModal = false;
-    cancelBooking = null;
+    cancelGroup = null;
 
     if (ok) await loadData();
   }
@@ -168,72 +173,84 @@
     if (ok) await loadData();
   }
 
-  function openRescheduleModal(booking: Booking) {
-    rescheduleBooking = booking;
-    rescheduleDate = booking.date;
-    rescheduleTime = booking.start_time;
+  function openRescheduleModal(group: MemberGroup) {
+    rescheduleGroup = group;
+    rescheduleDate = group.dates[0];
+    rescheduleTime = group.bookings[0].start_time;
     showRescheduleModal = true;
   }
 
   async function submitReschedule() {
-    if (!rescheduleBooking) return;
+    if (!rescheduleGroup) return;
     rescheduleLoading = true;
 
+    const group = rescheduleGroup;
     const [h, m] = rescheduleTime.split(':').map(Number);
+    const rep = group.bookings[0];
     const duration = Math.abs(
-      (rescheduleBooking.end_time.split(':').map(Number)[0] * 60 + rescheduleBooking.end_time.split(':').map(Number)[1]) -
-      (rescheduleBooking.start_time.split(':').map(Number)[0] * 60 + rescheduleBooking.start_time.split(':').map(Number)[1])
+      (rep.end_time.split(':').map(Number)[0] * 60 + rep.end_time.split(':').map(Number)[1]) -
+      (rep.start_time.split(':').map(Number)[0] * 60 + rep.start_time.split(':').map(Number)[1])
     );
     const endMinutes = h * 60 + m + duration;
     const endH = Math.floor(endMinutes / 60);
     const endM = endMinutes % 60;
     const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 
-    const ok = await postApi('/api/bookings/status', {
-      bookingId: rescheduleBooking.id,
-      date: rescheduleDate,
-      start_time: rescheduleTime,
-      end_time: endTime,
-      status: 'pending'
-    });
+    const msPerDay = 86400000;
+    const delta = Math.round(
+      (new Date(rescheduleDate + 'T00:00:00').getTime() - new Date(group.dates[0] + 'T00:00:00').getTime()) / msPerDay
+    );
+
+    let ok = true;
+    for (const b of group.bookings) {
+      const d = new Date(b.date + 'T00:00:00');
+      d.setDate(d.getDate() + delta);
+      const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const r = await postApi('/api/bookings/status', {
+        bookingId: b.id,
+        date: newDate,
+        start_time: rescheduleTime,
+        end_time: endTime,
+        status: 'pending'
+      });
+      if (!r) ok = false;
+    }
 
     rescheduleLoading = false;
     showRescheduleModal = false;
+    rescheduleGroup = null;
 
     if (ok) await loadData();
   }
 
-  $: upcomingBookings = bookings.filter(b => {
+  interface MemberGroup {
+    key: string;
+    room?: Room;
+    plan?: Plan;
+    bookings: Booking[];
+    dates: string[];
+    status: Booking['status'];
+    isSeries: boolean;
+  }
+
+  // Weekly/Monthly create one booking row per date, but they are a single
+  // purchase. Group them back into one "series" so each pass shows as a single
+  // card listing its assigned days. See lib/utils/booking-groups.ts.
+  $: allBookingGroups = groupBookings(bookings);
+
+  // A pass is "upcoming" while it is active (not cancelled/completed) and at
+  // least one of its days is today or later; otherwise it belongs to "past".
+  $: upcomingGroups = allBookingGroups.filter(g => {
     const today = new Date().toISOString().split('T')[0];
-    return b.date >= today && b.status !== 'cancelled';
+    const active = g.status !== 'cancelled' && g.status !== 'completed';
+    return active && g.dates.some(d => d >= today);
   });
 
-  $: pastBookings = bookings.filter(b => {
-    const today = new Date().toISOString().split('T')[0];
-    return b.date < today || b.status === 'cancelled';
-  });
-
-  // Weekly/Monthly create one booking row per day. Charge (and label) the
-  // series once — only the earliest row of each series shows the flat total.
-  $: seriesFirstIds = (() => {
-    const seen = new Set<string>();
-    const first = new Set<string>();
-    for (const b of bookings) {
-      const key =
-        b.plan?.slug === 'weekly' || b.plan?.slug === 'monthly'
-          ? `${b.plan_id ?? ''}::${b.room_id}`
-          : b.id;
-      if (!seen.has(key)) {
-        seen.add(key);
-        first.add(b.id);
-      }
-    }
-    return first;
-  })();
+  $: pastGroups = allBookingGroups.filter(g => !upcomingGroups.includes(g));
 
   $: memberTabs = [
-    { key: 'upcoming', label: 'Upcoming', count: upcomingBookings.length },
-    { key: 'past', label: 'Past', count: pastBookings.length },
+    { key: 'upcoming', label: 'Upcoming', count: upcomingGroups.length },
+    { key: 'past', label: 'Past', count: pastGroups.length },
     { key: 'reviews', label: 'Reviews', count: reviews.length },
     { key: 'reports', label: 'Reports', count: reports.length },
   ] as { key: 'upcoming' | 'past' | 'reviews' | 'reports'; label: string; count: number }[];
@@ -346,7 +363,7 @@
       {/each}
     </div>
   {:else if activeTab === 'upcoming'}
-    {#if upcomingBookings.length === 0}
+    {#if upcomingGroups.length === 0}
       <div class="card text-center py-12">
         <svg class="w-12 h-12 text-dark-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -357,48 +374,90 @@
       </div>
     {:else}
       <div class="space-y-4">
-        {#each upcomingBookings as booking (booking.id)}
-          {@const statusMeta = getStatusMeta(booking.status)}
-          <div class="card">
-            <div class="flex flex-col sm:flex-row sm:items-center gap-4">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1">
-                  <h3 class="text-lg font-semibold text-dark-900 truncate">{booking.room?.name || 'Unknown Room'}</h3>
-                  <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
-                </div>
-                <p class="text-sm text-dark-500">
-                  {formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}
-                </p>
-                <p class="text-sm text-dark-500">
-                  {#if seriesFirstIds.has(booking.id)}
-                    {#if booking.plan}
-                      {booking.plan.duration_label} · {formatCurrency(quoteForStoredBooking(booking).total)}
+        {#each upcomingGroups as group (group.key)}
+          {@const rep = group.bookings[0]}
+          {@const statusMeta = getStatusMeta(group.status)}
+          {#if group.isSeries}
+            <div class="card">
+              <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1 flex-wrap">
+                    <h3 class="text-lg font-semibold text-dark-900 truncate">{group.room?.name || 'Unknown Room'}</h3>
+                    {#if group.plan}
+                      <span class="badge bg-purple-100 text-purple-700 border-purple-200">{group.plan.name}</span>
                     {/if}
-                  {:else}
-                    {formatDuration(booking.start_time, booking.end_time)} · {booking.room ? formatCurrency(booking.room.price_per_hour) : ''}/hr
+                    <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
+                  </div>
+                  <p class="text-sm text-dark-500">
+                    {dateRangeLabel(group)}
+                    {#if group.dates.length === 1}
+                      · {formatTime(rep.start_time)} - {formatTime(rep.end_time)}
+                    {/if}
+                  </p>
+                  {#if group.plan}
+                    <p class="text-sm text-dark-500">{group.plan.name} · {formatCurrency(quoteForStoredBooking(rep).total)}</p>
                   {/if}
-                </p>
+                </div>
+                <div class="flex items-center gap-2">
+                  {#if group.status === 'pending' || group.status === 'approved'}
+                    <button on:click={() => openRescheduleModal(group)} class="btn-ghost-primary">
+                      Reschedule
+                    </button>
+                  {/if}
+                  {#if group.status !== 'cancelled'}
+                    <button on:click={() => openCancelModal(group)} class="btn-ghost-danger">
+                      Cancel
+                    </button>
+                  {/if}
+                </div>
               </div>
-              <div class="flex items-center gap-2">
-                {#if booking.status === 'pending' || booking.status === 'approved'}
-                  <button on:click={() => openRescheduleModal(booking)} class="btn-ghost-primary">
-                    Reschedule
-                  </button>
-                {/if}
-                {#if booking.status !== 'cancelled'}
-                  <button on:click={() => openCancelModal(booking)} class="btn-ghost-danger">
-                    Cancel
-                  </button>
-                {/if}
+              <div class="mt-3">
+                <p class="text-xs text-dark-500 mb-1.5">Scheduled days</p>
+                <div class="flex flex-wrap gap-1.5">
+                  {#each group.dates as iso (iso)}
+                    <span class="px-2 py-1 rounded-lg bg-dark-50 border border-dark-200 text-xs text-dark-700">
+                      {formatDate(iso)}
+                    </span>
+                  {/each}
+                </div>
               </div>
             </div>
-          </div>
+          {:else}
+            <div class="card">
+              <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1">
+                    <h3 class="text-lg font-semibold text-dark-900 truncate">{group.room?.name || 'Unknown Room'}</h3>
+                    <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
+                  </div>
+                  <p class="text-sm text-dark-500">
+                    {formatDate(rep.date)} · {formatTime(rep.start_time)} - {formatTime(rep.end_time)}
+                  </p>
+                  <p class="text-sm text-dark-500">
+                    {formatDuration(rep.start_time, rep.end_time)} · {group.room ? formatCurrency(group.room.price_per_hour) : ''}/hr
+                  </p>
+                </div>
+                <div class="flex items-center gap-2">
+                  {#if group.status === 'pending' || group.status === 'approved'}
+                    <button on:click={() => openRescheduleModal(group)} class="btn-ghost-primary">
+                      Reschedule
+                    </button>
+                  {/if}
+                  {#if group.status !== 'cancelled'}
+                    <button on:click={() => openCancelModal(group)} class="btn-ghost-danger">
+                      Cancel
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {/if}
         {/each}
       </div>
     {/if}
 
   {:else if activeTab === 'past'}
-    {#if pastBookings.length === 0}
+    {#if pastGroups.length === 0}
       <div class="card text-center py-12">
         <svg class="w-12 h-12 text-dark-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -409,19 +468,28 @@
       </div>
     {:else}
       <div class="space-y-4">
-        {#each pastBookings as booking (booking.id)}
-          {@const statusMeta = getStatusMeta(booking.status)}
-          {@const alreadyReviewed = booking.id ? reviewedBookingIds.has(booking.id) : false}
-          {@const canReview = (booking.status === 'completed' || booking.status === 'paid')}
+        {#each pastGroups as group (group.key)}
+          {@const rep = group.bookings[0]}
+          {@const statusMeta = getStatusMeta(group.status)}
+          {@const alreadyReviewed = rep.id ? reviewedBookingIds.has(rep.id) : false}
+          {@const canReview = (group.status === 'completed' || group.status === 'paid')}
           <div class="card">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1">
-                  <h3 class="text-lg font-semibold text-dark-900 truncate">{booking.room?.name || 'Unknown Room'}</h3>
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <h3 class="text-lg font-semibold text-dark-900 truncate">{group.room?.name || 'Unknown Room'}</h3>
+                  {#if group.plan}
+                    <span class="badge bg-purple-100 text-purple-700 border-purple-200">{group.plan.name}</span>
+                  {/if}
                   <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
                 </div>
                 <p class="text-sm text-dark-500">
-                  {formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}
+                  {#if group.isSeries}
+                    {dateRangeLabel(group)}
+                  {:else}
+                    {formatDate(rep.date)}
+                  {/if}
+                  · {formatTime(rep.start_time)} - {formatTime(rep.end_time)}
                 </p>
                 {#if canReview && !alreadyReviewed}
                   <p class="mt-1 text-xs text-gold-600">Rate your visit — we'd love your feedback.</p>
@@ -437,7 +505,7 @@
                       Reviewed
                     </span>
                   {:else}
-                    <button on:click={() => openReviewModal(booking)} class="btn-ghost-primary">
+                    <button on:click={() => openReviewModal(rep)} class="btn-ghost-primary">
                       Leave Review
                     </button>
                   {/if}
@@ -585,15 +653,23 @@
 
 <!-- Reschedule Modal -->
 <Modal isOpen={showRescheduleModal} title="Reschedule Booking" on:close={() => showRescheduleModal = false}>
-  {#if rescheduleBooking}
+  {#if rescheduleGroup}
     <form on:submit|preventDefault={submitReschedule} class="space-y-4">
       <div class="bg-dark-50 border border-dark-200 rounded-lg p-3">
-        <p class="text-sm text-dark-600">{rescheduleBooking.room?.name}</p>
-        <p class="text-sm text-dark-900">Currently: {formatDate(rescheduleBooking.date)}</p>
+        <p class="text-sm text-dark-600">{rescheduleGroup.room?.name}</p>
+        <p class="text-sm text-dark-900">
+          Currently:
+          {#if rescheduleGroup.isSeries}
+            {dateRangeLabel(rescheduleGroup)}
+          {:else}
+            {formatDate(rescheduleGroup.dates[0])}
+          {/if}
+          · {formatTime(rescheduleGroup.bookings[0].start_time)} - {formatTime(rescheduleGroup.bookings[0].end_time)}
+        </p>
       </div>
 
       <div>
-        <label for="reschedule-date" class="block text-sm font-medium text-dark-700 mb-1">New Date</label>
+        <label for="reschedule-date" class="block text-sm font-medium text-dark-700 mb-1">New {rescheduleGroup.isSeries ? 'Start ' : ''}Date</label>
         <input id="reschedule-date" type="date" bind:value={rescheduleDate} class="input" required />
       </div>
 
@@ -602,9 +678,15 @@
         <input id="reschedule-time" type="time" bind:value={rescheduleTime} class="input" required />
       </div>
 
-      <p class="text-xs text-dark-500">
-        Your booking will be moved to pending status for re-approval. Payment is non-refundable.
-      </p>
+      {#if rescheduleGroup.isSeries}
+        <p class="text-xs text-dark-500">
+          This is a {rescheduleGroup.plan?.name || 'weekly'} pass. Rescheduling moves all {rescheduleGroup.dates.length} scheduled days by the same amount and keeps the daily time window.
+        </p>
+      {:else}
+        <p class="text-xs text-dark-500">
+          Your booking will be moved to pending status for re-approval. Payment is non-refundable.
+        </p>
+      {/if}
 
       <div class="flex gap-3 pt-2">
         <button type="button" on:click={() => showRescheduleModal = false} class="btn-secondary flex-1">Cancel</button>
@@ -618,14 +700,21 @@
 
 <!-- Cancel Confirmation Modal -->
 <Modal isOpen={showCancelModal} title="Cancel Booking" on:close={() => showCancelModal = false}>
-  {#if cancelBooking}
+  {#if cancelGroup}
     <div class="space-y-4">
       <div class="bg-dark-50 border border-dark-200 rounded-lg p-3">
-        <p class="text-sm text-dark-600">{cancelBooking.room?.name}</p>
-        <p class="text-sm text-dark-900">{formatDate(cancelBooking.date)} · {formatTime(cancelBooking.start_time)} - {formatTime(cancelBooking.end_time)}</p>
+        <p class="text-sm text-dark-600">{cancelGroup.room?.name}</p>
+        <p class="text-sm text-dark-900">
+          {#if cancelGroup.isSeries}
+            {dateRangeLabel(cancelGroup)}
+          {:else}
+            {formatDate(cancelGroup.dates[0])}
+          {/if}
+          · {formatTime(cancelGroup.bookings[0].start_time)} - {formatTime(cancelGroup.bookings[0].end_time)}
+        </p>
       </div>
       <p class="text-xs text-dark-500">
-        Are you sure you want to cancel this booking? Payment is non-refundable. This cannot be undone.
+        Are you sure you want to cancel this {cancelGroup.isSeries ? 'pass (all ' + cancelGroup.dates.length + ' scheduled days)' : 'booking'}? Payment is non-refundable. This cannot be undone.
       </p>
       <div class="flex gap-3 pt-2">
         <button type="button" on:click={() => showCancelModal = false} class="btn-secondary flex-1">Keep Booking</button>

@@ -7,6 +7,7 @@
   import { formatDate, formatTime, formatCurrency, getRoomImage } from '$lib/utils/format';
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
   import { quoteForStoredBooking, usageMeter, formatMinutes } from '$lib/utils/pricing';
+  import { groupBookings, dateRangeLabel } from '$lib/utils/booking-groups';
   import Modal from '$lib/components/Modal.svelte';
 
   let bookings: Booking[] = [];
@@ -102,11 +103,6 @@
     memberships = membershipsRes.data ?? [];
     membershipUsage = usageRes.data ?? [];
     loading = false;
-  }
-
-  async function updateBookingStatus(bookingId: string, status: string) {
-    const ok = await postApi('/api/bookings/status', { bookingId, status });
-    if (ok) await loadData();
   }
 
   async function toggleRoomActive(roomId: string, currentStatus: boolean) {
@@ -206,21 +202,59 @@
     activeTab = tab;
   }
 
-  $: pendingBookings = bookings.filter(b => b.status === 'pending');
+  $: pendingBookings = bookingGroups.filter(g => g.status === 'pending');
 
-  $: filteredBookings = bookings
-    .filter(b => filterStatus === 'all' || b.status === filterStatus)
-    .filter(b => {
+  // Weekly/Monthly bookings create one DB row per date, but they are a single
+  // purchase. Group them back into one "series" so the admin sees one card per
+  // pass instead of one card per day. See lib/utils/booking-groups.ts.
+  interface AdminBookingGroup {
+    key: string;
+    room?: Room;
+    plan?: Plan;
+    profile?: { full_name: string; email: string };
+    guest_name: string;
+    guest_email: string;
+    start_time: string;
+    end_time: string;
+    dates: string[];
+    bookings: Booking[];
+    status: Booking['status'];
+    isSeries: boolean;
+    price: number;
+  }
+
+  $: bookingGroups = groupBookings(bookings).map<AdminBookingGroup>((g) => {
+    const first = g.bookings[0];
+    return {
+      key: g.key,
+      room: g.room,
+      plan: g.plan,
+      profile: first.profile,
+      guest_name: first.guest_name,
+      guest_email: first.guest_email,
+      start_time: first.start_time,
+      end_time: first.end_time,
+      dates: g.dates,
+      bookings: g.bookings,
+      status: g.status,
+      isSeries: g.isSeries,
+      price: quoteForStoredBooking(first).total
+    };
+  });
+
+  $: filteredBookingGroups = bookingGroups
+    .filter(g => filterStatus === 'all' || g.status === filterStatus)
+    .filter(g => {
       const q = searchQuery.trim().toLowerCase();
       if (!q) return true;
-      return [b.room?.name, b.profile?.full_name, b.guest_name, b.guest_email]
+      return [g.room?.name, g.profile?.full_name, g.guest_name, g.guest_email]
         .filter(Boolean)
         .some(v => v!.toLowerCase().includes(q));
     })
-    .filter(b => !dateFilter || b.date === dateFilter)
+    .filter(g => !dateFilter || g.dates.includes(dateFilter))
     .sort((a, b) => sortOrder === 'newest'
-      ? (a.date > b.date ? -1 : a.date < b.date ? 1 : 0)
-      : (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      ? (a.dates[a.dates.length - 1] > b.dates[b.dates.length - 1] ? -1 : a.dates[a.dates.length - 1] < b.dates[b.dates.length - 1] ? 1 : 0)
+      : (a.dates[0] < b.dates[0] ? -1 : a.dates[0] > b.dates[0] ? 1 : 0));
 
   $: filteredMembers = members
     .filter(m => {
@@ -236,33 +270,50 @@
       return [r.subject, r.description, r.profile?.full_name].filter(Boolean).some(v => v!.toLowerCase().includes(q));
     });
 
-  $: visibleBookingIds = filteredBookings.map(b => b.id);
-  $: allVisibleSelected = visibleBookingIds.length > 0 && visibleBookingIds.every(id => selectedBookingIds.has(id));
+  $: visibleGroupKeys = filteredBookingGroups.map(g => g.key);
+  $: allVisibleSelected = visibleGroupKeys.length > 0 && visibleGroupKeys.every(k => selectedBookingIds.has(k));
 
   function toggleSelectAll() {
     if (allVisibleSelected) {
-      visibleBookingIds.forEach(id => selectedBookingIds.delete(id));
+      visibleGroupKeys.forEach(k => selectedBookingIds.delete(k));
     } else {
-      visibleBookingIds.forEach(id => selectedBookingIds.add(id));
+      visibleGroupKeys.forEach(k => selectedBookingIds.add(k));
     }
     selectedBookingIds = new Set(selectedBookingIds);
   }
 
-  function toggleSelectBooking(id: string) {
-    if (selectedBookingIds.has(id)) {
-      selectedBookingIds.delete(id);
+  function toggleSelectGroup(key: string) {
+    if (selectedBookingIds.has(key)) {
+      selectedBookingIds.delete(key);
     } else {
-      selectedBookingIds.add(id);
+      selectedBookingIds.add(key);
     }
     selectedBookingIds = new Set(selectedBookingIds);
+  }
+
+  function selectedBookingCount(): number {
+    return bookingGroups
+      .filter(g => selectedBookingIds.has(g.key))
+      .reduce((n, g) => n + g.bookings.length, 0);
   }
 
   async function bulkUpdateStatus(status: string) {
     if (selectedBookingIds.size === 0) return;
+    const ids = bookingGroups
+      .filter(g => selectedBookingIds.has(g.key))
+      .flatMap(g => g.bookings.map(b => b.id));
     bulkLoading = true;
-    const ok = await postApi('/api/bookings/status', { bookingIds: [...selectedBookingIds], status });
+    const ok = await postApi('/api/bookings/status', { bookingIds: ids, status });
     bulkLoading = false;
     selectedBookingIds = new Set();
+    if (ok) await loadData();
+  }
+
+  async function updateGroupStatus(group: AdminBookingGroup, status: string) {
+    const ok = await postApi('/api/bookings/status', {
+      bookingIds: group.bookings.map(b => b.id),
+      status
+    });
     if (ok) await loadData();
   }
 
@@ -495,7 +546,7 @@
           >
             {status.charAt(0).toUpperCase() + status.slice(1)}
             {#if status !== 'all'}
-              <span class="ml-1 text-xs">({bookings.filter(b => b.status === status).length})</span>
+              <span class="ml-1 text-xs">({bookingGroups.filter(g => g.status === status).length})</span>
             {/if}
           </button>
         {/each}
@@ -536,7 +587,7 @@
 
     {#if selectedBookingIds.size > 0}
       <div class="mb-4 flex items-center gap-2 flex-wrap bg-primary-50 border border-primary-100 rounded-lg px-4 py-3">
-        <span class="text-sm font-medium text-primary-900">{selectedBookingIds.size} selected</span>
+        <span class="text-sm font-medium text-primary-900">{selectedBookingIds.size} selected · {selectedBookingCount()} booking rows</span>
         <button on:click={() => bulkUpdateStatus('approved')} disabled={bulkLoading} class="btn-ghost-green text-sm">Approve</button>
         <button on:click={() => bulkUpdateStatus('paid')} disabled={bulkLoading} class="btn-ghost-blue text-sm">Mark Paid</button>
         <button on:click={() => bulkUpdateStatus('cancelled')} disabled={bulkLoading} class="btn-ghost-danger text-sm">Cancel</button>
@@ -544,7 +595,7 @@
       </div>
     {/if}
 
-    {#if filteredBookings.length === 0}
+    {#if filteredBookingGroups.length === 0}
       <div class="card text-center py-12">
         <p class="text-dark-500 mb-6">No bookings found</p>
         <button on:click={() => { searchQuery = ''; dateFilter = ''; filterStatus = 'all'; }} class="btn-secondary">
@@ -561,39 +612,52 @@
             class="w-4 h-4 accent-primary-600"
             aria-label="Select all"
           />
-          <span class="text-xs text-dark-500">Select all ({filteredBookings.length})</span>
+          <span class="text-xs text-dark-500">Select all ({filteredBookingGroups.length})</span>
         </div>
-        {#each filteredBookings as booking (booking.id)}
-          {@const statusMeta = getStatusMeta(booking.status)}
+        {#each filteredBookingGroups as group (group.key)}
+          {@const statusMeta = getStatusMeta(group.status)}
           <div class="card">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <input
                 type="checkbox"
-                checked={selectedBookingIds.has(booking.id)}
-                on:change={() => toggleSelectBooking(booking.id)}
+                checked={selectedBookingIds.has(group.key)}
+                on:change={() => toggleSelectGroup(group.key)}
                 class="w-4 h-4 accent-primary-600 flex-shrink-0"
-                aria-label={`Select ${booking.room?.name || 'booking'}`}
+                aria-label={`Select ${group.room?.name || 'booking'}`}
               />
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1">
-                  <h3 class="font-semibold text-dark-900">{booking.room?.name || 'Unknown Room'}</h3>
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <h3 class="font-semibold text-dark-900">{group.room?.name || 'Unknown Room'}</h3>
+                  {#if group.plan}
+                    <span class="badge bg-purple-100 text-purple-700 border-purple-200">{group.plan.name}</span>
+                  {/if}
                   <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
                 </div>
-                <p class="text-sm text-dark-500">{booking.profile?.full_name || booking.guest_name} · {booking.guest_email}</p>
-                <p class="text-sm text-dark-500">{formatDate(booking.date)} · {formatTime(booking.start_time)} - {formatTime(booking.end_time)}</p>
+                <p class="text-sm text-dark-500">{group.profile?.full_name || group.guest_name} · {group.guest_email}</p>
+                <p class="text-sm text-dark-500">
+                  {#if group.isSeries}
+                    {dateRangeLabel(group)}
+                  {:else}
+                    {formatDate(group.dates[0])}
+                  {/if}
+                  · {formatTime(group.start_time)} - {formatTime(group.end_time)}
+                </p>
+                {#if group.plan}
+                  <p class="text-sm text-dark-500">{group.plan.name} · {formatCurrency(group.price)}</p>
+                {/if}
               </div>
               <div class="flex items-center gap-2 flex-wrap">
-                {#if booking.status === 'pending'}
-                  <button on:click={() => updateBookingStatus(booking.id, 'approved')} class="btn-ghost-green text-sm">Approve</button>
+                {#if group.status === 'pending'}
+                  <button on:click={() => updateGroupStatus(group, 'approved')} class="btn-ghost-green text-sm">Approve</button>
                 {/if}
-                {#if booking.status === 'approved'}
-                  <button on:click={() => updateBookingStatus(booking.id, 'paid')} class="btn-ghost-blue text-sm">Mark Paid</button>
+                {#if group.status === 'approved'}
+                  <button on:click={() => updateGroupStatus(group, 'paid')} class="btn-ghost-blue text-sm">Mark Paid</button>
                 {/if}
-                {#if booking.status === 'paid'}
-                  <button on:click={() => updateBookingStatus(booking.id, 'completed')} class="btn-ghost-primary text-sm">Complete</button>
+                {#if group.status === 'paid'}
+                  <button on:click={() => updateGroupStatus(group, 'completed')} class="btn-ghost-primary text-sm">Complete</button>
                 {/if}
-                {#if booking.status !== 'cancelled'}
-                  <button on:click={() => updateBookingStatus(booking.id, 'cancelled')} class="btn-ghost-danger text-sm">Cancel</button>
+                {#if group.status !== 'cancelled'}
+                  <button on:click={() => updateGroupStatus(group, 'cancelled')} class="btn-ghost-danger text-sm">Cancel</button>
                 {/if}
               </div>
             </div>
