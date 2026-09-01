@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import { buildMonthGrid, isWeekend, toISODate, type CalendarDay } from '$lib/utils/dates';
+	import { isVictorianHoliday } from '$lib/utils/holidays';
 	import type { Booking } from '$lib/types/database';
 
 	/** All blocking bookings for the room, keyed by ISO date. */
@@ -8,8 +9,6 @@
 	export let selectedDate: string | null = null;
 	/** How many days ahead are actually loaded/bookable — caps forward navigation. */
 	export let lookaheadDays = 30;
-	/** Greys out Sat/Sun — used for plans (Weekly) that only book weekdays. */
-	export let disableWeekends = false;
 	/**
 	 * ISO dates included in a multi-day series (Weekly/Monthly). When set, the
 	 * range is highlighted on the calendar so the member can see the full span
@@ -61,9 +60,14 @@
 
 	function pick(day: CalendarDay) {
 		if (day.isPast || day.isFullyBooked || !day.isCurrentMonth) return;
-		if (disableWeekends && isWeekend(day.iso)) return;
+		if (isNonBookable(day.iso)) return;
 		if (toISODate(new Date(day.iso)) > toISODate(maxDate)) return;
 		dispatch('selectDate', day.iso);
+	}
+
+	// Weekends and Victorian public holidays are closed — greyed out and not selectable.
+	function isNonBookable(iso: string): boolean {
+		return isWeekend(iso) || isVictorianHoliday(iso);
 	}
 
 	const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -101,8 +105,9 @@
 	<div class="mt-1 grid grid-cols-7 gap-1">
 		{#each days as day (day.iso)}
 			{@const beyondLookahead = day.iso > toISODate(maxDate)}
-			{@const isWeekendDay = disableWeekends && isWeekend(day.iso)}
-			{@const disabled = day.isPast || day.isFullyBooked || !day.isCurrentMonth || beyondLookahead || isWeekendDay}
+			{@const isClosedDay = isNonBookable(day.iso)}
+			{@const disabled = day.isPast || day.isFullyBooked || !day.isCurrentMonth || beyondLookahead || isClosedDay}
+			{@const isHoliday = isVictorianHoliday(day.iso)}
 			{@const isRangeStart = rangeDates.length > 1 && day.iso === rangeStart}
 			{@const isRangeEnd = rangeDates.length > 1 && day.iso === rangeEnd}
 			{@const isRangeInterior = rangeDates.length > 1 && day.iso !== rangeStart && day.iso !== rangeEnd && rangeSet.has(day.iso)}
@@ -122,7 +127,12 @@
 					{selectedDate === day.iso || isRangeStart ? '!bg-primary-600 !text-white' : ''}"
 			>
 			{day.dayOfMonth}
-			{#if day.isCurrentMonth && !day.isPast && day.availability !== 'free'}
+			{#if isHoliday && day.isCurrentMonth}
+				<span
+					class="absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-gold-500"
+					title="Public holiday"
+				></span>
+			{:else if day.isCurrentMonth && !day.isPast && day.availability !== 'free'}
 				<span
 					class="absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full {day.availability === 'full'
 						? 'bg-red-500'
@@ -135,6 +145,10 @@
 	</div>
 
 	<div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dark-500">
+		<span class="flex items-center gap-1">
+			<span class="inline-block h-3 w-3 rounded border border-dark-200 bg-dark-100"></span>
+			Closed (weekend / public holiday)
+		</span>
 		<span class="flex items-center gap-1">
 			<span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>
 			Fully booked

@@ -2,6 +2,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createServerClient } from '$lib/supabase/server';
 import { sendMail } from '$lib/server/mail';
+import { isWeekend } from '$lib/utils/dates';
+import { isVictorianHoliday } from '$lib/utils/holidays';
 
 const ALLOWED_STATUSES = ['pending', 'approved', 'paid', 'completed', 'cancelled'];
 
@@ -64,6 +66,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Optional reschedule fields (member reschedule). date/start_time/end_time
 	// are updated alongside the status when provided.
 	const patch: Record<string, unknown> = { status };
+
+	// You can't reschedule onto a closed day (weekend or Victorian public holiday).
+	if (body.date && (isWeekend(body.date) || isVictorianHoliday(body.date))) {
+		return json(
+			{ message: 'The hub is closed on that day. Please pick an open weekday.' },
+			{ status: 400 }
+		);
+	}
+
 	if (body.date) patch.date = body.date;
 	if (body.start_time) patch.start_time = body.start_time;
 	if (body.end_time) patch.end_time = body.end_time;

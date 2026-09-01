@@ -1,7 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createServerClient } from '$lib/supabase/server';
-import { isPastDate, rangesOverlap, timeToMinutes } from '$lib/utils/dates';
+import { isPastDate, isWeekend, rangesOverlap, timeToMinutes } from '$lib/utils/dates';
+import { isVictorianHoliday } from '$lib/utils/holidays';
 import { sendMail, getAdminEmails } from '$lib/server/mail';
 import type { BookingChargeType, Membership } from '$lib/types/database';
 
@@ -133,6 +134,22 @@ export const POST: RequestHandler = async ({ request }) => {
 	const { data: plan } = plan_id
 		? await supabase.from('plans').select('id, slug, name').eq('id', plan_id).single()
 		: { data: null };
+
+	// Block bookings on closed days (weekends and Victorian public holidays).
+	// Monthly passes are a recurring calendar-month access and keep their full
+	// range; every other plan must book on an open weekday.
+	if (plan?.slug !== 'monthly') {
+		const closed = dates.filter((d: string) => isWeekend(d) || isVictorianHoliday(d));
+		if (closed.length > 0) {
+			return json(
+				{
+					message: `The hub is closed on: ${closed.join(', ')}. Please pick an open weekday.`,
+					closedDays: closed
+				},
+				{ status: 400 }
+			);
+		}
+	}
 
 	const { data: membershipRows } = await supabase
 		.from('memberships')

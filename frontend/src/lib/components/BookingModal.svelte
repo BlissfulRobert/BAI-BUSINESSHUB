@@ -583,7 +583,6 @@
 						{selectedDate}
 						rangeDates={isSeriesPlan ? seriesDates : []}
 						lookaheadDays={CALENDAR_LOOKAHEAD_DAYS}
-						disableWeekends={selectedPlan?.slug === 'weekly'}
 						on:selectDate={(e) => (selectedDate = e.detail)}
 					/>
 

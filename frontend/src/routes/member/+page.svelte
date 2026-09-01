@@ -8,6 +8,8 @@
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
   import { quoteForStoredBooking, usageMeter } from '$lib/utils/pricing';
   import { groupBookings, dateRangeLabel } from '$lib/utils/booking-groups';
+  import { isWeekend } from '$lib/utils/dates';
+  import { isVictorianHoliday } from '$lib/utils/holidays';
   import Modal from '$lib/components/Modal.svelte';
 
   let bookings: Booking[] = [];
@@ -35,6 +37,7 @@
   let rescheduleDate = '';
   let rescheduleTime = '';
   let rescheduleLoading = false;
+  let rescheduleError = '';
 
   let showCancelModal = false;
   let cancelGroup: MemberGroup | null = null;
@@ -177,11 +180,18 @@
     rescheduleGroup = group;
     rescheduleDate = group.dates[0];
     rescheduleTime = group.bookings[0].start_time;
+    rescheduleError = '';
     showRescheduleModal = true;
   }
 
   async function submitReschedule() {
     if (!rescheduleGroup) return;
+
+    if (isWeekend(rescheduleDate) || isVictorianHoliday(rescheduleDate)) {
+      rescheduleError = 'The hub is closed on that day (weekend or public holiday). Please pick an open weekday.';
+      return;
+    }
+    rescheduleError = '';
     rescheduleLoading = true;
 
     const group = rescheduleGroup;
@@ -671,12 +681,19 @@
       <div>
         <label for="reschedule-date" class="block text-sm font-medium text-dark-700 mb-1">New {rescheduleGroup.isSeries ? 'Start ' : ''}Date</label>
         <input id="reschedule-date" type="date" bind:value={rescheduleDate} class="input" required />
+        <p class="mt-1 text-xs text-dark-500">The hub is closed on weekends and public holidays.</p>
       </div>
 
       <div>
         <label for="reschedule-time" class="block text-sm font-medium text-dark-700 mb-1">New Start Time</label>
         <input id="reschedule-time" type="time" bind:value={rescheduleTime} class="input" required />
       </div>
+
+      {#if rescheduleError}
+        <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {rescheduleError}
+        </div>
+      {/if}
 
       {#if rescheduleGroup.isSeries}
         <p class="text-xs text-dark-500">

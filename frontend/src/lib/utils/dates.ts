@@ -1,4 +1,5 @@
 import type { Booking, Plan } from '$lib/types/database';
+import { isVictorianHoliday } from '$lib/utils/holidays';
 
 /** Business hours the hub is bookable within. Adjust to match real operating hours. */
 export const HUB_OPEN_HOUR = 9; // 9:00 AM
@@ -116,17 +117,17 @@ export function isWeekend(iso: string): boolean {
 
 /**
  * Weekly/Monthly plans repeat the same daily time slot across several days:
- * Weekly = 5 weekdays (Mon–Fri), skipping weekends — if the start date itself
- * falls on a weekend the first weekday on/after it is used as day one.
- * Monthly = the same date range up to (but not including) the same date next
- * month. Any other plan is a single day.
+ * Weekly = 5 weekdays (Mon–Fri), skipping weekends and public holidays — if the
+ * start date itself falls on a closed day the first open weekday on/after it is
+ * used as day one. Monthly = the same date range up to (but not including) the
+ * same date next month. Any other plan is a single day.
  */
 export function getSeriesDates(startIso: string, plan: Plan): string[] {
 	if (plan.slug === 'weekly') {
 		const dates: string[] = [];
 		let cur = startIso;
 		while (dates.length < 5) {
-			if (!isWeekend(cur)) dates.push(cur);
+			if (!isWeekend(cur) && !isVictorianHoliday(cur)) dates.push(cur);
 			cur = addDays(cur, 1);
 		}
 		return dates;
@@ -144,9 +145,9 @@ export function getSeriesDates(startIso: string, plan: Plan): string[] {
 
 /**
  * Weekly series: 5 weekdays rolling forward from the chosen start, skipping
- * weekends and any day that's already fully booked (no free 1-hour block
- * left), so the pass is still 5 rentable days even when some days are taken.
- * Sequential so a Tuesday start rolls Mon–Fri of the following weeks.
+ * weekends, public holidays, and any day that's already fully booked (no free
+ * 1-hour block left), so the pass is still 5 rentable days even when some days
+ * are taken. Sequential so a Tuesday start rolls Mon–Fri of the following weeks.
  */
 export function getWeeklySeriesDates(
 	startIso: string,
@@ -157,7 +158,7 @@ export function getWeeklySeriesDates(
 	let guard = 0;
 	while (dates.length < 5 && guard < 366) {
 		guard++;
-		if (!isWeekend(cur) && !isDateFullyBooked(bookingsByDate[cur] ?? [])) {
+		if (!isWeekend(cur) && !isVictorianHoliday(cur) && !isDateFullyBooked(bookingsByDate[cur] ?? [])) {
 			dates.push(cur);
 		}
 		cur = addDays(cur, 1);
