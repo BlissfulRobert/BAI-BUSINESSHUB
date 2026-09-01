@@ -3,7 +3,7 @@ import { isVictorianHoliday } from '$lib/utils/holidays';
 
 /** Business hours the hub is bookable within. Adjust to match real operating hours. */
 export const HUB_OPEN_HOUR = 9; // 9:00 AM
-export const HUB_CLOSE_HOUR = 17; // 5:00 PM
+export const HUB_CLOSE_HOUR = 19; // 7:00 PM
 const SLOT_STEP_MINUTES = 60;
 
 /** How far ahead a series start date can be picked. */

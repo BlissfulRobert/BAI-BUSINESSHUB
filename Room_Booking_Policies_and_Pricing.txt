@@ -1,0 +1,132 @@
+Booking Platform – Final Working Policies &
+Pricing Rules
+Updated Management Reference Document
+1. Booking & Payment
+• Booking confirmation: A booking becomes Confirmed only after successful payment. Flow: Booking Created →
+Pending Payment → Payment Successful → Confirmed.
+• Unpaid/Pending bookings: An unpaid booking remains Pending for 15 minutes. If payment is not completed, it
+automatically expires and the room/time slot is released.
+• Payment reminder: A reminder is sent/displayed at approximately 10 minutes after booking creation, leaving
+approximately 5 minutes before expiration.
+• Confirmation email: Sent after successful payment and should include booking reference, room, date/time,
+duration, amount paid, payment status, and applicable policies.
+• Booking reminders: Send reminders 1 day and 1 hour before the scheduled booking.
+2. Operating Hours & Availability
+• Operating schedule: Monday–Friday, 9:00 AM–7:00 PM.
+• Weekends: Closed. If weekend availability is introduced later, use the weekday hourly rate initially unless
+demand data justifies a premium.
+• Public holidays: Closed and unavailable for booking.
+• Automatic blocking: The system should automatically block weekends, public holidays, and
+administrator-designated closed dates.
+• Manual closures: Administrators may close rooms/dates for maintenance, private events, company activities,
+emergencies, or other business needs.
+3. Weekly & Monthly Plans
+• Weekly plan: 10 hours per week.
+• Monthly plan: 40 hours per month.
+• Weekly discount: 10% below the standard hourly rate.
+• Monthly discount: 20% below the standard hourly rate.
+• Consecutive bookings: Multiple consecutive days or weeks may be booked in one transaction, subject to
+availability.
+• Maximum duration: No fixed overall cap. Customers may book as many hours/days as needed subject to
+availability and operating hours. Maximum available window per day is 10 hours.
+4. Membership
+• Membership price: $99/month as the current working price.
+• Included hours: 4 Conference Office hours + 4 Meeting Room hours per month.
+• Additional hours: Members receive a 10% discount on additional hours after using included hours.
+• Unused hours: Included hours expire at the end of the membership period and do not automatically roll over.
+• Priority booking: Members receive a 48-hour priority booking window before regular customers.
+5. Cancellation & Refunds
+• Customer cancellations: Completed bookings are 100% non-refundable.
+• Non-refundable notice: The policy should be clearly displayed before payment and acknowledged by the
+customer.
+• Late cancellation fee: The separate 50% late-cancellation fee is removed because the booking is already
+non-refundable.
+• Emergency exceptions: Genuine emergencies may be reviewed case-by-case by management.
+6. Rescheduling
+• Notice: Customers should request a reschedule at least 24 hours before the original booking.
+• First reschedule: One qualifying reschedule is free.
+• Second/late reschedule: A 10% fee based on the original booking value may apply.
+• Rescheduling window: One-off hourly/daily bookings may be moved within 30 days of the original date.
+Weekly/monthly plan sessions should remain within the applicable plan period or immediately following approved
+period.
+• Higher replacement price: Customer pays the difference.
+• Lower replacement price: No cash refund; the difference becomes account credit for a future eligible booking.
+• Weekly/monthly plans: Individual sessions may be rescheduled under the same basic rules, subject to
+availability.
+7. No-Show Policy
+• No-show charge: 100% of the booking value is forfeited.
+• Exceptions: Genuine emergencies may be reviewed case-by-case by management. No automatic emergency
+exception is granted by the system.
+8. Business-Initiated Cancellation / Room Unavailability
+• Business cancellation: If the business cancels a confirmed paid booking, the customer may choose between a
+full refund or free rescheduling.
+• Room becomes unavailable: If a confirmed paid room becomes unavailable because of maintenance,
+emergency closure, operational issues, or another business reason, the customer receives the same choice: full
+refund or free rescheduling.
+• No rescheduling fee: Business-initiated changes never incur a customer rescheduling fee.
+9. Recommended Booking State Flow
+• Created → Pending: Customer selects a room/time and proceeds to payment.
+• Pending → Confirmed: Payment succeeds within 15 minutes.
+• Pending → Expired: Payment is not completed within 15 minutes; availability is released.
+• Confirmed → Completed: Booking time passes successfully.
+• Confirmed → Rescheduled: Customer uses an eligible reschedule.
+• Confirmed → Cancelled: Customer cancels; no cash refund under the standard policy.
+• Confirmed → Business Cancelled: Customer chooses full refund or free rescheduling.
+• Confirmed → No-show: Customer fails to attend; 100% of booking value is forfeited.
+10. Final Working Policy Table
+Policy Final Working Rule
+Operating days Monday–Friday
+Operating hours 9:00 AM–7:00 PM
+Weekends Closed
+Public holidays Closed
+Booking confirmation After successful payment
+Unpaid booking status Pending
+Pending payment hold 15 minutes
+Payment reminder 10 minutes after creation
+Booking reminders 1 day + 1 hour before
+Weekly plan 10 hours/week
+Monthly plan 40 hours/month
+Weekly discount 10%
+Monthly discount 20%
+Membership $99/month*
+Membership included hours 4 Conference Office + 4 Meeting Room hours/month*
+Additional member hours 10% discount
+Unused hours Expire
+Member priority 48 hours
+Customer refunds Non-refundable
+Rescheduling notice 24 hours
+First reschedule Free
+Second/late reschedule 10% fee
+Reschedule window 30 days for one-off bookings
+Higher replacement price Customer pays difference
+Lower replacement price Account credit
+No-show 100% forfeited
+Emergency exception Management approval
+Business cancellation Full refund OR free rescheduling
+Business-caused room unavailability Full refund OR free rescheduling
+50% late cancellation fee Removed
+* Working assumptions approved for this implementation draft. The $99 membership price and its included-hour structure are treated as
+the current working values based on the previously discussed proposal; management can revise them later without changing the core
+booking policy.
+11. Implementation Checklist
+■ Implement 15-minute pending-payment expiration.
+■ Release room/time availability automatically when a pending booking expires.
+■ Send/display payment reminder around the 10-minute mark.
+■ Send confirmation email only after successful payment.
+■ Schedule booking reminders for 1 day and 1 hour before the booking.
+■ Block weekends and public holidays automatically.
+■ Support administrator-controlled closed dates.
+■ Implement weekly 10-hour and monthly 40-hour plans.
+■ Apply 10% weekly and 20% monthly discounts.
+■ Apply 10% member discount to additional hours.
+■ Expire unused membership hours.
+■ Provide members with 48-hour priority booking.
+■ Enforce non-refundable customer cancellations.
+■ Allow one free reschedule with 24-hour notice.
+■ Apply 10% fee to second/late rescheduling.
+■ Limit one-off rescheduling to 30 days.
+■ Convert lower-priced rescheduling differences into account credit.
+■ Apply 100% no-show forfeiture.
+■ Allow management-approved emergency exceptions.
+■ Allow customer choice of full refund or free rescheduling when the business cancels or the room becomes
+unavailable.

@@ -184,53 +184,68 @@
     showRescheduleModal = true;
   }
 
-  async function submitReschedule() {
-    if (!rescheduleGroup) return;
+async function submitReschedule() {
+	if (!rescheduleGroup) return;
 
-    if (isWeekend(rescheduleDate) || isVictorianHoliday(rescheduleDate)) {
-      rescheduleError = 'The hub is closed on that day (weekend or public holiday). Please pick an open weekday.';
+    // 24-hour notice check: cannot reschedule within 24 hours of original booking
+    const firstBookingDate = rescheduleGroup.bookings[0].date;
+    const now = new Date();
+    const bookingDate = new Date(firstBookingDate + 'T00:00:00');
+    const hoursDiff = (bookingDate - now) / 3600000;
+    if (hoursDiff < 24) {
+      rescheduleError = 'Rescheduling requires at least 24 hours notice before the original booking time.';
       return;
     }
-    rescheduleError = '';
-    rescheduleLoading = true;
+	rescheduleError = '';
+	rescheduleLoading = true;
 
-    const group = rescheduleGroup;
-    const [h, m] = rescheduleTime.split(':').map(Number);
-    const rep = group.bookings[0];
-    const duration = Math.abs(
-      (rep.end_time.split(':').map(Number)[0] * 60 + rep.end_time.split(':').map(Number)[1]) -
-      (rep.start_time.split(':').map(Number)[0] * 60 + rep.start_time.split(':').map(Number)[1])
-    );
-    const endMinutes = h * 60 + m + duration;
-    const endH = Math.floor(endMinutes / 60);
-    const endM = endMinutes % 60;
-    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+	const group = rescheduleGroup;
+	const [h, m] = rescheduleTime.split(':').map(Number);
+	const rep = group.bookings[0];
+	const duration = Math.abs(
+	  (rep.end_time.split(':').map(Number)[0] * 60 + rep.end_time.split(':').map(Number)[1]) -
+	  (rep.start_time.split(':').map(Number)[0] * 60 + rep.start_time.split(':').map(Number)[1])
+	);
+	const endMinutes = h * 60 + m + duration;
+	const endH = Math.floor(endMinutes / 60);
+	const endM = endMinutes % 60;
+	const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 
-    const msPerDay = 86400000;
-    const delta = Math.round(
-      (new Date(rescheduleDate + 'T00:00:00').getTime() - new Date(group.dates[0] + 'T00:00:00').getTime()) / msPerDay
-    );
+	const msPerDay = 86400000;
+	const delta = Math.round(
+	  (new Date(rescheduleDate + 'T00:00:00').getTime() - new Date(group.dates[0] + 'T00:00:00').getTime()) / msPerDay
+	);
 
-    let ok = true;
-    for (const b of group.bookings) {
-      const d = new Date(b.date + 'T00:00:00');
-      d.setDate(d.getDate() + delta);
-      const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const r = await postApi('/api/bookings/status', {
-        bookingId: b.id,
-        date: newDate,
-        start_time: rescheduleTime,
-        end_time: endTime,
-        status: 'pending'
-      });
-      if (!r) ok = false;
-    }
+	let ok = true;
+	for (const b of group.bookings) {
+	  const d = new Date(b.date + 'T00:00:00');
+	  d.setDate(d.getDate() + delta);
+	  const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      // 30-day window check for one-off bookings
+      if (!group.plan || group.plan.slug !== 'weekly' && group.plan.slug !== 'monthly') {
+        const originalDate = new Date(b.date + 'T00:00:00');
+        const daysSinceOriginal = Math.round((new Date() - originalDate) / msPerDay);
+        if (daysSinceOriginal > 30) {
+          rescheduleError = 'One-off bookings can only be rescheduled within 30 days of the original date.';
+          ok = false;
+          continue;
+        }
+      }
+	  const r = await postApi('/api/bookings/status', {
+		bookingId: b.id,
+		date: newDate,
+		start_time: rescheduleTime,
+		end_time: endTime,
+		status: 'pending'
+	  });
+	  if (!r) ok = false;
+	}
 
-    rescheduleLoading = false;
-    showRescheduleModal = false;
-    rescheduleGroup = null;
+	rescheduleLoading = false;
+	showRescheduleModal = false;
+	rescheduleGroup = null;
 
-    if (ok) await loadData();
+	if (ok) await loadData();
   }
 
   interface MemberGroup {
@@ -292,7 +307,8 @@
             <h2 class="text-lg font-semibold text-dark-900">My Membership</h2>
             <span class="badge-green">Active</span>
           </div>
-          <p class="text-xs text-dark-500">Included hours reset each calendar month (no rollover). Additional usage is billed at standard rates.</p>
+          <p class="text-xs text-dark-500">$99/month · 4 Conference Office hours + 4 Meeting Room hours per month · Included hours expire at month end, no rollover · 10% discount on additional hours · 48-hour priority booking window</p>
+        </div>
         </div>
       </div>
       <div class="grid sm:grid-cols-2 gap-4 mt-4">
@@ -328,11 +344,10 @@
             <p class="text-xs text-dark-500 mt-1.5">
               {meetMeter.exhausted ? 'Included hours used — overage bills at standard rate' : `Remaining this month: ${meetMeter.remainingLabel}`}
             </p>
-          </div>
-        {/if}
-      </div>
-    </div>
+</div>
   {/if}
+</div>
+{/if}
 
   <div class="flex gap-1 bg-dark-100 border border-dark-200 rounded-lg p-1 mb-8 overflow-x-auto">
     {#each memberTabs as tab}
@@ -701,7 +716,9 @@
         </p>
       {:else}
         <p class="text-xs text-dark-500">
-          Your booking will be moved to pending status for re-approval. Payment is non-refundable.
+          This is a one-off booking. Rescheduling moves this booking to pending status for re-approval.
+          24-hour notice required. First reschedule is free; second/late reschedule may incur a 10% fee based on the original booking value.
+          Bookings can only be rescheduled within 30 days of the original date.
         </p>
       {/if}
 
@@ -731,7 +748,7 @@
         </p>
       </div>
       <p class="text-xs text-dark-500">
-        Are you sure you want to cancel this {cancelGroup.isSeries ? 'pass (all ' + cancelGroup.dates.length + ' scheduled days)' : 'booking'}? Payment is non-refundable. This cannot be undone.
+        Are you sure you want to cancel this {cancelGroup.isSeries ? 'pass (all ' + cancelGroup.dates.length + ' scheduled days)' : 'booking'}? Payment is 100% non-refundable. Genuine emergencies may be reviewed case-by-case by management. This cannot be undone.
       </p>
       <div class="flex gap-3 pt-2">
         <button type="button" on:click={() => showCancelModal = false} class="btn-secondary flex-1">Keep Booking</button>

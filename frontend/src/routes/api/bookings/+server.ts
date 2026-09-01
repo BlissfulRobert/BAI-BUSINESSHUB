@@ -10,6 +10,7 @@ const BLOCKING_STATUSES = ['pending', 'approved', 'paid', 'completed'];
 // Membership included-hours only cover on-demand (hourly/period) bookings;
 // Weekly/Monthly passes are separate purchases. (See Room Rental Rate Structure.)
 const ON_DEMAND_PLAN_SLUGS = ['hourly', 'half-day', 'full-day'];
+const CLOSED_DATES_LOOKAHEAD_DAYS = 60;
 
 function monthStart(isoDate: string): string {
 	const [y, m] = isoDate.split('-');
@@ -47,6 +48,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	const body = await request.json();
+	let blockedByMemberPriority = false;
 	const {
 		room_id,
 		plan_id,
@@ -151,6 +153,32 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	}
 
+	// Check administrator-controlled closed dates.
+	const { data: adminClosedDates } = await supabase
+		.from('closed_dates')
+		.select('date')
+		.in('date', dates);
+
+	if (adminClosedDates && adminClosedDates.length > 0) {
+		return json(
+			{
+				message: `The hub is closed on: ${adminClosedDates.map((d) => d.date).join(', ')}. Please pick an open date.`,
+				closedDates: adminClosedDates.map((d) => d.date)
+			},
+			{ status: 400 }
+		);
+	}
+
+	if (blockedByMemberPriority) {
+		return json(
+			{
+				message:
+					'This time slot is reserved for members with a 48-hour priority booking window. Please pick another time or become a member.',
+			},
+			{ status: 403 }
+		);
+	}
+
 	const { data: membershipRows } = await supabase
 		.from('memberships')
 		.select('*')
@@ -158,6 +186,46 @@ export const POST: RequestHandler = async ({ request }) => {
 		.eq('is_active', true)
 		.limit(1);
 	const membership: Membership | null = membershipRows?.[0] ?? null;
+
+	// 48-hour priority booking for members (Section 4)
+	// Members get a 48-hour priority booking window before regular customers.
+	// If a regular customer tries to book a slot that a member has already booked
+	// within the priority window, the regular customer's booking is blocked.
+	const priorityWindowMs = 48 * 60 * 60 * 1000;
+
+	if (!membership && plan) {
+		// Check if any active member has booked the same room and date/time
+		// within the 48-hour priority window, blocking regular customers.
+		const priorityCutoff = new Date(Date.now() - priorityWindowMs);
+		const { data: memberBookings } = await supabase
+			.from('bookings')
+			.select('date, start_time, end_time, status, created_at, updated_at')
+			.eq('room_id', room_id)
+			.in('status', ['approved', 'paid', 'completed']);
+
+		if (memberBookings && memberBookings.length > 0) {
+			for (const mb of memberBookings) {
+				const bookingDate = new Date(mb.date);
+				const bookingStart = timeToMinutes(mb.start_time);
+				const bookingEnd = timeToMinutes(mb.end_time);
+				const requestStart = timeToMinutes(start_time);
+				const requestEnd = timeToMinutes(end_time);
+
+				// Check for overlap and if the member booking is within the priority window
+				if (
+					mb.date === dates[0] &&
+					!((bookingEnd <= requestStart) || (bookingStart >= requestEnd))
+				) {
+					const memberBookingTime = new Date(mb.created_at ?? mb.updated_at ?? Date.now());
+					const diffMs = Math.abs(Date.now() - memberBookingTime.getTime());
+					if (diffMs < priorityWindowMs) {
+						blockedByMemberPriority = true;
+						break;
+					}
+				}
+			}
+		}
+	}
 
 	const isOnDemand =
 		!!plan && ON_DEMAND_PLAN_SLUGS.includes(plan.slug as string);

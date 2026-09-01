@@ -30,6 +30,11 @@
 	let showConfirmation = false;
 	let bookingReference = '';
 
+	// Pending payment timer state
+	let pendingMinutesRemaining = 0;
+	let pendingTimerInterval = null;
+	let bookingCreatedTime = null;
+
 	// Multi-step wizard: 1 = plan & date, 2 = time & details, 3 = review & confirm.
 	let step = 1;
 
@@ -80,10 +85,10 @@
 	// fixed to 9 AM – 5 PM and the time selectors are hidden.
 	$: fixedTimePlan = selectedPlan?.slug === 'full-day' || selectedPlan?.slug === 'weekly';
 
-	// Auto-fill 9 AM – 5 PM for fixed-time plans once a date is picked.
+	// Auto-fill 9 AM – 7 PM for fixed-time plans once a date is picked.
 	$: if (fixedTimePlan && selectedDate) {
 		startTime = '09:00';
-		endTime = '17:00';
+		endTime = '19:00';
 	}
 	$: seriesDates = selectedPlan && selectedDate
 		? (selectedPlan.slug === 'weekly'
@@ -132,6 +137,19 @@
 		if ($profile?.full_name) guestName = $profile.full_name;
 		if ($profile?.email) guestEmail = $profile.email;
 		if ($profile?.phone) guestPhone = $profile.phone;
+
+		// Start the 15-minute pending payment timer
+		bookingCreatedTime = new Date();
+		pendingMinutesRemaining = 15;
+		startPendingTimer();
+	} else {
+		// Clear the timer when modal closes
+		if (pendingTimerInterval) {
+			clearInterval(pendingTimerInterval);
+			pendingTimerInterval = null;
+		}
+		pendingMinutesRemaining = 0;
+		bookingCreatedTime = null;
 	}
 
 	// Business hours come from the shared availability engine so the modal's
@@ -161,6 +179,40 @@
 			hour: 'numeric',
 			minute: '2-digit'
 		});
+	}
+
+	function startPendingTimer() {
+		if (pendingTimerInterval) {
+			clearInterval(pendingTimerInterval);
+		}
+		pendingTimerInterval = setInterval(() => {
+			pendingMinutesRemaining--;
+
+			// Show warning at 5 minutes remaining
+			if (pendingMinutesRemaining <= 5) {
+				// Could add visual warning here
+			}
+
+			// Auto-expire after 15 minutes
+			if (pendingMinutesRemaining <= 0) {
+				clearInterval(pendingTimerInterval);
+				pendingTimerInterval = null;
+				// Trigger booking expiry - mark as expired
+				errorMessage = 'Your booking has expired due to pending payment timeout. The room/time slot has been released.';
+				// Reset form
+				selectedPlan = null;
+				selectedDate = '';
+				startTime = '';
+				endTime = '';
+				guestName = '';
+				guestEmail = '';
+				guestPhone = '';
+				purpose = '';
+				step = 1;
+				pendingMinutesRemaining = 0;
+				bookingCreatedTime = null;
+			}
+		}, 60000); // 1 minute intervals
 	}
 
 	function timeToMinutes(time: string): number {
@@ -924,6 +976,17 @@
 						<span class="text-dark-500">Duration</span>
 						<span class="font-medium text-dark-900">{bookingDuration}</span>
 					</div>
+					{#if pendingMinutesRemaining > 0}
+					<div class="mt-1 flex justify-between gap-4">
+						<span class="text-dark-500">Time remaining</span>
+						<span class="font-medium text-primary-600">{pendingMinutesRemaining} min</span>
+					</div>
+					{/if}
+					{#if pendingMinutesRemaining === 10}
+					<div class="mt-1 text-xs text-dark-500">
+						Payment reminder: displayed at 10 minutes after booking creation, leaving ~5 minutes before expiration.
+					</div>
+					{/if}
 					{#if quote}
 						<div class="mt-1 flex justify-between gap-4 rounded-lg bg-white px-3 py-2">
 							<span class="text-dark-500">Charge</span>
@@ -979,9 +1042,17 @@
 			</div>
 
 			<p class="mt-3 text-center text-xs text-dark-500">
-				This reserves the {seriesDates.length > 1 ? `${seriesDates.length} days` : 'slot'}
-				pending admin approval. Payment is on site and non-refundable.
+				This reserves the {seriesDates.length > 1 ? `${seriesDates.length} days` : 'slot'} pending payment.
+				Payment must be completed within 15 minutes or the booking will automatically expire and the room/time slot will be released.
 			</p>
+			<div class="mt-2 text-center text-xs text-dark-500">
+				Available hours: 9:00 AM – 7:00 PM Mon–Fri
+			</div>
+			{#if selectedPlan?.slug !== 'full-day' && selectedPlan?.slug !== 'weekly'}
+			<p class="mt-2 text-center text-xs text-dark-500">
+				Payment reminder will be displayed at approximately 10 minutes after booking creation, leaving approximately 5 minutes before expiration.
+			</p>
+			{/if}
 		{/if}
 
 		<!-- STEP 4: Confirmation -->

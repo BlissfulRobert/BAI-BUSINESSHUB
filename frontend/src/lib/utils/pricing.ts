@@ -1,5 +1,5 @@
 import type { Booking, Membership, MembershipUsage, Plan, Room } from '$lib/types/database';
-import { timeToMinutes } from '$lib/utils/dates';
+import { timeToMinutes, toISODate } from '$lib/utils/dates';
 
 /**
  * Rental-period pricing per the Room Rental Rate Structure (figures mirrored
@@ -17,8 +17,11 @@ import { timeToMinutes } from '$lib/utils/dates';
 export const HALF_DAY_HOURS = 4;
 export const FULL_DAY_HOURS = 8;
 
-/** Promotional discount applied to the weekly rate (5% off the configured weekly price). */
-export const WEEKLY_DISCOUNT_RATE = 0.05;
+/** Promotional discount applied to the weekly rate (10% off the configured weekly price). */
+export const WEEKLY_DISCOUNT_RATE = 0.10;
+
+/** Promotional discount applied to the monthly rate (20% off the configured monthly price). */
+export const MONTHLY_DISCOUNT_RATE = 0.20;
 
 export interface RateCard {
 	halfDay: number;
@@ -65,9 +68,14 @@ export function isWeekly(plan: Plan | null): boolean {
 	return plan?.slug === 'weekly';
 }
 
-/** Weekly rate with the advertised 5% promotional discount applied. */
+/** Weekly rate with the advertised 10% promotional discount applied. */
 function weeklyDiscountedPrice(room: Room, plan: Plan | null): number {
 	return round2(configuredPlanPrice(room, plan, 'weekly') * (1 - WEEKLY_DISCOUNT_RATE));
+}
+
+/** Monthly rate with the advertised 20% promotional discount applied. */
+function monthlyDiscountedPrice(room: Room, plan: Plan | null): number {
+	return round2(configuredPlanPrice(room, plan, 'monthly') * (1 - MONTHLY_DISCOUNT_RATE));
 }
 
 /**
@@ -83,7 +91,7 @@ export function planReferencePrice(room: Room, plan: Plan): number {
 		case 'weekly':
 			return weeklyDiscountedPrice(room, plan);
 		case 'monthly':
-			return configuredPlanPrice(room, plan, 'monthly');
+			return monthlyDiscountedPrice(room, plan);
 		case 'half-day':
 			return card ? card.halfDay : round2(hourly * HALF_DAY_HOURS);
 		case 'full-day':
@@ -108,12 +116,12 @@ export function quoteForBooking(
 ): Quote {
 	const totalMinutes = timeToMinutes(endTime) - timeToMinutes(startTime);
 
-	// Weekly/Monthly: per-room configured rate (Weekly gets the 5% promo discount).
+	// Weekly/Monthly: per-room configured rate (Weekly gets the 10% promo discount).
 	if (isConfiguredPlan(plan) && plan) {
 		const isWk = isWeekly(plan);
-		const price = isWk ? weeklyDiscountedPrice(room, plan) : configuredPlanPrice(room, plan, 'monthly');
+		const price = isWk ? weeklyDiscountedPrice(room, plan) : monthlyDiscountedPrice(room, plan);
 		return {
-			label: isWk ? `${plan.duration_label || plan.name} (−5%)` : plan.duration_label || plan.name,
+			label: isWk ? `${plan.duration_label || plan.name} (−10%)` : plan.duration_label || plan.name,
 			unitPrice: price,
 			quantity: 1,
 			total: price
@@ -154,9 +162,9 @@ export function quoteForStoredBooking(booking: Booking): Quote {
 
 	if (plan && isConfiguredPlan(plan)) {
 		const isWk = isWeekly(plan);
-		const price = isWk ? weeklyDiscountedPrice(room, plan) : configuredPlanPrice(room, plan, 'monthly');
+		const price = isWk ? weeklyDiscountedPrice(room, plan) : monthlyDiscountedPrice(room, plan);
 		return {
-			label: isWk ? `${plan.duration_label || plan.name} (−5%)` : plan.duration_label || plan.name,
+			label: isWk ? `${plan.duration_label || plan.name} (−10%)` : plan.duration_label || plan.name,
 			unitPrice: price,
 			quantity: 1,
 			total: price
@@ -202,7 +210,26 @@ export function usageMeter(
 	roomSlug: string
 ): UsageMeter {
 	const includedMinutes = Math.round(includedHoursFor(membership, roomSlug) * 60);
-	const usedMinutes = (usage ?? []).find((u) => u.room_slug === roomSlug)?.used_minutes ?? 0;
+
+	// Find the usage record for the current room slug that covers the current date.
+	// Membership periods are calendar-month based; unused hours expire at the end
+	// of the period and do not roll over.
+	let usedMinutes = 0;
+	const now = new Date();
+	const currentIso = toISODate(new Date());
+
+	if (usage) {
+		const currentPeriodUsage = usage.find(
+			(u) => u.room_slug === roomSlug && u.period_start <= currentIso && u.period_end >= currentIso
+		);
+
+		if (currentPeriodUsage) {
+			usedMinutes = currentPeriodUsage.used_minutes;
+		}
+		// If no current period usage found, unused hours expire (usedMinutes stays 0),
+		// implementing the "expire at end of period, no rollover" policy.
+	}
+
 	const remainingMinutes = Math.max(0, includedMinutes - usedMinutes);
 	return {
 		includedMinutes,
