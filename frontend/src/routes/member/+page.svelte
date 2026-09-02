@@ -191,7 +191,7 @@ async function submitReschedule() {
     const firstBookingDate = rescheduleGroup.bookings[0].date;
     const now = new Date();
     const bookingDate = new Date(firstBookingDate + 'T00:00:00');
-    const hoursDiff = (bookingDate - now) / 3600000;
+    const hoursDiff = (bookingDate.getTime() - now.getTime()) / 3600000;
     if (hoursDiff < 24) {
       rescheduleError = 'Rescheduling requires at least 24 hours notice before the original booking time.';
       return;
@@ -224,7 +224,7 @@ async function submitReschedule() {
       // 30-day window check for one-off bookings
       if (!group.plan || group.plan.slug !== 'weekly' && group.plan.slug !== 'monthly') {
         const originalDate = new Date(b.date + 'T00:00:00');
-        const daysSinceOriginal = Math.round((new Date() - originalDate) / msPerDay);
+        const daysSinceOriginal = Math.round((new Date().getTime() - originalDate.getTime()) / msPerDay);
         if (daysSinceOriginal > 30) {
           rescheduleError = 'One-off bookings can only be rescheduled within 30 days of the original date.';
           ok = false;
