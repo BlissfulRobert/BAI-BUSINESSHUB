@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
   import { user, profile, isLoading } from '$lib/stores/auth';
@@ -68,40 +67,50 @@
     goto('/auth/login');
   }
 
-  onMount(async () => {
-    await loadData();
-  });
+  // Only load data once auth has settled AND a user exists. Using a reactive
+  // statement (instead of onMount) avoids the refresh hang where onMount runs
+  // before the Supabase session has been restored and $user is still null.
+  $: if (!$isLoading && isLoggedIn && loading) {
+    loadData();
+  }
 
   async function loadData() {
-    const [bookingsRes, reviewsRes, reportsRes, membershipRes, usageRes] = await Promise.all([
-      supabase
-        .from('bookings')
-        .select('*, room:rooms(*), plan:plans(*)')
-        .eq('user_id', $user!.id)
-        .order('date', { ascending: false }),
-      supabase
-        .from('reviews')
-        .select('*, room:rooms(name)')
-        .eq('user_id', $user!.id)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('reports')
-        .select('*, booking:bookings(booking_number, date, start_time, end_time)')
-        .eq('user_id', $user!.id)
-        .order('created_at', { ascending: false }),
-      supabase.from('memberships').select('*').eq('user_id', $user!.id).maybeSingle(),
-      supabase
-        .from('membership_usage')
-        .select('*')
-        .order('period_start', { ascending: false })
-    ]);
+    if (!$user) return;
+    loading = true;
+    try {
+      const [bookingsRes, reviewsRes, reportsRes, membershipRes, usageRes] = await Promise.all([
+        supabase
+          .from('bookings')
+          .select('*, room:rooms(*), plan:plans(*)')
+          .eq('user_id', $user.id)
+          .order('date', { ascending: false }),
+        supabase
+          .from('reviews')
+          .select('*, room:rooms(name)')
+          .eq('user_id', $user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('reports')
+          .select('*, booking:bookings(booking_number, date, start_time, end_time)')
+          .eq('user_id', $user.id)
+          .order('created_at', { ascending: false }),
+        supabase.from('memberships').select('*').eq('user_id', $user.id).maybeSingle(),
+        supabase
+          .from('membership_usage')
+          .select('*')
+          .order('period_start', { ascending: false })
+      ]);
 
-    bookings = bookingsRes.data ?? [];
-    reviews = reviewsRes.data ?? [];
-    reports = reportsRes.data ?? [];
-    membership = (membershipRes.error ? null : membershipRes.data) ?? null;
-    membershipUsage = usageRes.data ?? [];
-    loading = false;
+      bookings = bookingsRes.data ?? [];
+      reviews = reviewsRes.data ?? [];
+      reports = reportsRes.data ?? [];
+      membership = (membershipRes.error ? null : membershipRes.data) ?? null;
+      membershipUsage = usageRes.data ?? [];
+    } catch (e) {
+      console.error('Failed to load member data:', e);
+    } finally {
+      loading = false;
+    }
   }
 
   function openCancelModal(group: MemberGroup) {

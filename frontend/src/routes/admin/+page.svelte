@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
   import { user, profile, isLoading } from '$lib/stores/auth';
@@ -78,31 +77,40 @@
     goto('/auth/login');
   }
 
-  onMount(async () => {
-    await loadData();
-  });
+  // Only load data once auth has settled AND the user is an admin. Using a
+  // reactive statement (instead of onMount) avoids the refresh hang where
+  // onMount runs before the Supabase session has been restored.
+  $: if (!$isLoading && isLoggedIn && isAdmin && loading) {
+    loadData();
+  }
 
   async function loadData() {
-    const [bookingsRes, roomsRes, membersRes, reportsRes, galleryRes, plansRes, membershipsRes, usageRes] = await Promise.all([
-      supabase.from('bookings').select('*, room:rooms(*), plan:plans(*), profile:profiles(*)').order('date', { ascending: false }),
-      supabase.from('rooms').select('*').order('name'),
-      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-      supabase.from('reports').select('*, profile:profiles(full_name, email), booking:bookings(booking_number, date, start_time, end_time)').order('created_at', { ascending: false }),
-      supabase.from('gallery').select('*').order('sort_order'),
-      supabase.from('plans').select('*').order('sort_order'),
-      supabase.from('memberships').select('*'),
-      supabase.from('membership_usage').select('*').order('period_start', { ascending: false })
-    ]);
+    loading = true;
+    try {
+      const [bookingsRes, roomsRes, membersRes, reportsRes, galleryRes, plansRes, membershipsRes, usageRes] = await Promise.all([
+        supabase.from('bookings').select('*, room:rooms(*), plan:plans(*), profile:profiles(*)').order('date', { ascending: false }),
+        supabase.from('rooms').select('*').order('name'),
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('reports').select('*, profile:profiles(full_name, email), booking:bookings(booking_number, date, start_time, end_time)').order('created_at', { ascending: false }),
+        supabase.from('gallery').select('*').order('sort_order'),
+        supabase.from('plans').select('*').order('sort_order'),
+        supabase.from('memberships').select('*'),
+        supabase.from('membership_usage').select('*').order('period_start', { ascending: false })
+      ]);
 
-    bookings = bookingsRes.data ?? [];
-    rooms = roomsRes.data ?? [];
-    members = membersRes.data ?? [];
-    reports = reportsRes.data ?? [];
-    galleryImages = galleryRes.data ?? [];
-    plans = plansRes.data ?? [];
-    memberships = membershipsRes.data ?? [];
-    membershipUsage = usageRes.data ?? [];
-    loading = false;
+      bookings = bookingsRes.data ?? [];
+      rooms = roomsRes.data ?? [];
+      members = membersRes.data ?? [];
+      reports = reportsRes.data ?? [];
+      galleryImages = galleryRes.data ?? [];
+      plans = plansRes.data ?? [];
+      memberships = membershipsRes.data ?? [];
+      membershipUsage = usageRes.data ?? [];
+    } catch (e) {
+      console.error('Failed to load admin data:', e);
+    } finally {
+      loading = false;
+    }
   }
 
   async function toggleRoomActive(roomId: string, currentStatus: boolean) {
