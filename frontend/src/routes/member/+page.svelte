@@ -190,8 +190,8 @@
     showRescheduleModal = true;
   }
 
-async function submitReschedule() {
-	if (!rescheduleGroup) return;
+  async function submitReschedule() {
+    if (!rescheduleGroup) return;
 
     // 24-hour notice check: cannot reschedule within 24 hours of original booking
     const firstBookingDate = rescheduleGroup.bookings[0].date;
@@ -202,31 +202,31 @@ async function submitReschedule() {
       rescheduleError = 'Rescheduling requires at least 24 hours notice before the original booking time.';
       return;
     }
-	rescheduleError = '';
-	rescheduleLoading = true;
+    rescheduleError = '';
+    rescheduleLoading = true;
 
-	const group = rescheduleGroup;
-	const [h, m] = rescheduleTime.split(':').map(Number);
-	const rep = group.bookings[0];
-	const duration = Math.abs(
-	  (rep.end_time.split(':').map(Number)[0] * 60 + rep.end_time.split(':').map(Number)[1]) -
-	  (rep.start_time.split(':').map(Number)[0] * 60 + rep.start_time.split(':').map(Number)[1])
-	);
-	const endMinutes = h * 60 + m + duration;
-	const endH = Math.floor(endMinutes / 60);
-	const endM = endMinutes % 60;
-	const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+    const group = rescheduleGroup;
+    const [h, m] = rescheduleTime.split(':').map(Number);
+    const rep = group.bookings[0];
+    const duration = Math.abs(
+      (rep.end_time.split(':').map(Number)[0] * 60 + rep.end_time.split(':').map(Number)[1]) -
+      (rep.start_time.split(':').map(Number)[0] * 60 + rep.start_time.split(':').map(Number)[1])
+    );
+    const endMinutes = h * 60 + m + duration;
+    const endH = Math.floor(endMinutes / 60);
+    const endM = endMinutes % 60;
+    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 
-	const msPerDay = 86400000;
-	const delta = Math.round(
-	  (new Date(rescheduleDate + 'T00:00:00').getTime() - new Date(group.dates[0] + 'T00:00:00').getTime()) / msPerDay
-	);
+    const msPerDay = 86400000;
+    const delta = Math.round(
+      (new Date(rescheduleDate + 'T00:00:00').getTime() - new Date(group.dates[0] + 'T00:00:00').getTime()) / msPerDay
+    );
 
-	let ok = true;
-	for (const b of group.bookings) {
-	  const d = new Date(b.date + 'T00:00:00');
-	  d.setDate(d.getDate() + delta);
-	  const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    let ok = true;
+    for (const b of group.bookings) {
+      const d = new Date(b.date + 'T00:00:00');
+      d.setDate(d.getDate() + delta);
+      const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       // 30-day window check for one-off bookings
       if (!group.plan || group.plan.slug !== 'weekly' && group.plan.slug !== 'monthly') {
         const originalDate = new Date(b.date + 'T00:00:00');
@@ -237,21 +237,21 @@ async function submitReschedule() {
           continue;
         }
       }
-	  const r = await postApi('/api/bookings/status', {
-		bookingId: b.id,
-		date: newDate,
-		start_time: rescheduleTime,
-		end_time: endTime,
-		status: 'pending'
-	  });
-	  if (!r) ok = false;
-	}
+      const r = await postApi('/api/bookings/status', {
+        bookingId: b.id,
+        date: newDate,
+        start_time: rescheduleTime,
+        end_time: endTime,
+        status: 'pending'
+      });
+      if (!r) ok = false;
+    }
 
-	rescheduleLoading = false;
-	showRescheduleModal = false;
-	rescheduleGroup = null;
+    rescheduleLoading = false;
+    showRescheduleModal = false;
+    rescheduleGroup = null;
 
-	if (ok) await loadData();
+    if (ok) await loadData();
   }
 
   interface MemberGroup {
@@ -315,7 +315,6 @@ async function submitReschedule() {
           </div>
           <p class="text-xs text-dark-500">$99/month · 4 Conference Office hours + 4 Meeting Room hours per month · Included hours expire at month end, no rollover · 10% discount on additional hours · 48-hour priority booking window</p>
         </div>
-        </div>
       </div>
       <div class="grid sm:grid-cols-2 gap-4 mt-4">
         {#if confMeter}
@@ -350,10 +349,11 @@ async function submitReschedule() {
             <p class="text-xs text-dark-500 mt-1.5">
               {meetMeter.exhausted ? 'Included hours used — overage bills at standard rate' : `Remaining this month: ${meetMeter.remainingLabel}`}
             </p>
-</div>
+          </div>
+        {/if}
+      </div>
+    </div>
   {/if}
-</div>
-{/if}
 
   <div class="flex gap-1 bg-dark-100 border border-dark-200 rounded-lg p-1 mb-8 overflow-x-auto">
     {#each memberTabs as tab}
@@ -539,7 +539,7 @@ async function submitReschedule() {
                     <button on:click={() => openReviewModal(rep)} class="btn-ghost-primary">
                       Leave Review
                     </button>
-                  {:if}
+                  {/if}
                 {/if}
               </div>
             </div>
