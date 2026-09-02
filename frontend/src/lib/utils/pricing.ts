@@ -31,7 +31,7 @@ export interface RateCard {
 }
 
 /** Flat per-room rates (AUD) keyed by room slug. */
-const RATE_CARDS: Record<string, RateCard> = {
+export const RATE_CARDS: Record<string, RateCard> = {
 	'conference-room': { halfDay: 200, fullDay: 350, weekly: 1600, monthly: 6400 },
 	'meeting-room': { halfDay: 120, fullDay: 200, weekly: 960, monthly: 3840 }
 };
