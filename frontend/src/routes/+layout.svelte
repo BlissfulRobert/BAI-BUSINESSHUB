@@ -74,6 +74,7 @@
     navLink("/", "Home"),
     navLink("/#rooms", "Meeting spaces"),
     navLink("/#about", "About us"),
+    navLink("/policies", "FAQs & Policies"),
   ];
 </script>
 
@@ -310,6 +311,13 @@
                 href="/#location"
                 class="text-sm text-dark-400 hover:text-white transition-colors"
                 >Location</a
+              >
+            </li>
+            <li>
+              <a
+                href="/policies"
+                class="text-sm text-dark-400 hover:text-white transition-colors"
+                >FAQs & Policies</a
               >
             </li>
           </ul>
