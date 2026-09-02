@@ -41,7 +41,7 @@
 
   // Pending payment timer state
   let pendingMinutesRemaining = 0;
-  let pendingTimerInterval = null;
+  let pendingTimerInterval: ReturnType<typeof setInterval> | null = null;
   let bookingCreatedTime = null;
 
   // Multi-step wizard: 1 = plan & date, 2 = time & details, 3 = review & confirm.
@@ -215,8 +215,10 @@
 
       // Auto-expire after 15 minutes
       if (pendingMinutesRemaining <= 0) {
-        clearInterval(pendingTimerInterval);
-        pendingTimerInterval = null;
+        if (pendingTimerInterval) {
+            clearInterval(pendingTimerInterval);
+            pendingTimerInterval = null;
+        }
         // Trigger booking expiry - mark as expired
         errorMessage =
           "Your booking has expired due to pending payment timeout. The room/time slot has been released.";
