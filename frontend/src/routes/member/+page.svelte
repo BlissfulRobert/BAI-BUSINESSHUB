@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
   import { user, profile, isLoading } from '$lib/stores/auth';
@@ -64,7 +65,8 @@
   $: reviewedBookingIds = new Set(reviews.map((r) => r.booking_id));
 
   $: if (!$isLoading && !isLoggedIn) {
-    goto('/auth/login');
+    // goto() cannot run during SSR; redirect only after the page hydrates.
+    if (browser) goto('/auth/login');
   }
 
   // Only load data once auth has settled AND a user exists. Using a reactive
