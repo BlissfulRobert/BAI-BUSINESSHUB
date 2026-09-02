@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
   import { user, profile, isLoading } from '$lib/stores/auth';
@@ -62,21 +61,19 @@
   $: isLoggedIn = !!$user;
   $: reviewedBookingIds = new Set(reviews.map((r) => r.booking_id));
 
+  // Redirect to login once auth has settled and there's no user
   $: if (!$isLoading && !isLoggedIn) {
     goto('/auth/login');
   }
 
-  // Load data once auth is restored and the user is logged in
+  // Only load data once auth has finished restoring AND we have a user
   $: if (!$isLoading && isLoggedIn && loading) {
     loadData();
   }
 
-  onMount(async () => {
-    if ($user) await loadData();
-  });
-
   async function loadData() {
     if (!$user) return;
+    loading = true;
     const [bookingsRes, reviewsRes, reportsRes, membershipRes, usageRes] = await Promise.all([
       supabase
         .from('bookings')
