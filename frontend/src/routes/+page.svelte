@@ -193,7 +193,7 @@
         {#if !loading && plans.length > 0}
           <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             {#each plans as plan, i (plan.id)}
-              <PlanCard {plan} selected={i === 1} />
+              <PlanCard {plan} {rooms} selected={i === 1} />
             {/each}
           </div>
         {/if}
