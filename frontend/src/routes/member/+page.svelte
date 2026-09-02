@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase/client';
   import { user, profile, isLoading } from '$lib/stores/auth';
@@ -42,6 +43,8 @@
   let cancelGroup: MemberGroup | null = null;
   let cancelLoading = false;
 
+  let selectedReportBookingId = '';
+
   async function postApi(path: string, payload: unknown): Promise<boolean> {
     const {
       data: { session }
@@ -61,36 +64,32 @@
   $: isLoggedIn = !!$user;
   $: reviewedBookingIds = new Set(reviews.map((r) => r.booking_id));
 
-  // Redirect to login once auth has settled and there's no user
   $: if (!$isLoading && !isLoggedIn) {
     goto('/auth/login');
   }
 
-  // Only load data once auth has finished restoring AND we have a user
-  $: if (!$isLoading && isLoggedIn && loading) {
-    loadData();
-  }
+  onMount(async () => {
+    await loadData();
+  });
 
   async function loadData() {
-    if (!$user) return;
-    loading = true;
     const [bookingsRes, reviewsRes, reportsRes, membershipRes, usageRes] = await Promise.all([
       supabase
         .from('bookings')
         .select('*, room:rooms(*), plan:plans(*)')
-        .eq('user_id', $user.id)
+        .eq('user_id', $user!.id)
         .order('date', { ascending: false }),
       supabase
         .from('reviews')
         .select('*, room:rooms(name)')
-        .eq('user_id', $user.id)
+        .eq('user_id', $user!.id)
         .order('created_at', { ascending: false }),
       supabase
         .from('reports')
-        .select('*')
-        .eq('user_id', $user.id)
+        .select('*, booking:bookings(booking_number, date, start_time, end_time)')
+        .eq('user_id', $user!.id)
         .order('created_at', { ascending: false }),
-      supabase.from('memberships').select('*').eq('user_id', $user.id).maybeSingle(),
+      supabase.from('memberships').select('*').eq('user_id', $user!.id).maybeSingle(),
       supabase
         .from('membership_usage')
         .select('*')
@@ -130,6 +129,13 @@
     if (ok) await loadData();
   }
 
+  function bookingOptionLabel(b: Booking): string {
+  const number = b.booking_number ?? b.id.slice(0, 8);
+  return `${number} \u2014 ${b.room?.name ?? 'Room'} \u00b7 ${formatDate(b.date)} \u00b7 ${formatTime(b.start_time)}-${formatTime(b.end_time)}`;
+  }
+
+  $: reportableBookings = bookings.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+
   function openReviewModal(booking: Booking) {
     reviewBooking = booking;
     reviewRating = 5;
@@ -157,26 +163,27 @@
     if (!error) await loadData();
   }
 
-  function openReportModal(booking: Booking | null = null) {
-    reportBooking = booking;
-    reportSubject = '';
-    reportDescription = '';
-    showReportModal = true;
+function openReportModal(booking: Booking | null = null) {
+  reportBooking = booking;
+  selectedReportBookingId = booking?.id ?? '';
+  reportSubject = '';
+  reportDescription = '';
+  showReportModal = true;
   }
 
-  async function submitReport() {
-    reportLoading = true;
+async function submitReport() {
+  reportLoading = true;
 
-    const ok = await postApi('/api/reports', {
-      booking_id: reportBooking?.id || null,
-      subject: reportSubject,
-      description: reportDescription
-    });
+  const ok = await postApi('/api/reports', {
+    booking_id: selectedReportBookingId || null,
+    subject: reportSubject,
+    description: reportDescription
+  });
 
-    reportLoading = false;
-    showReportModal = false;
+  reportLoading = false;
+  showReportModal = false;
 
-    if (ok) await loadData();
+  if (ok) await loadData();
   }
 
   function openRescheduleModal(group: MemberGroup) {
@@ -187,8 +194,8 @@
     showRescheduleModal = true;
   }
 
-  async function submitReschedule() {
-    if (!rescheduleGroup) return;
+async function submitReschedule() {
+	if (!rescheduleGroup) return;
 
     // 24-hour notice check: cannot reschedule within 24 hours of original booking
     const firstBookingDate = rescheduleGroup.bookings[0].date;
@@ -199,31 +206,31 @@
       rescheduleError = 'Rescheduling requires at least 24 hours notice before the original booking time.';
       return;
     }
-    rescheduleError = '';
-    rescheduleLoading = true;
+	rescheduleError = '';
+	rescheduleLoading = true;
 
-    const group = rescheduleGroup;
-    const [h, m] = rescheduleTime.split(':').map(Number);
-    const rep = group.bookings[0];
-    const duration = Math.abs(
-      (rep.end_time.split(':').map(Number)[0] * 60 + rep.end_time.split(':').map(Number)[1]) -
-      (rep.start_time.split(':').map(Number)[0] * 60 + rep.start_time.split(':').map(Number)[1])
-    );
-    const endMinutes = h * 60 + m + duration;
-    const endH = Math.floor(endMinutes / 60);
-    const endM = endMinutes % 60;
-    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+	const group = rescheduleGroup;
+	const [h, m] = rescheduleTime.split(':').map(Number);
+	const rep = group.bookings[0];
+	const duration = Math.abs(
+	  (rep.end_time.split(':').map(Number)[0] * 60 + rep.end_time.split(':').map(Number)[1]) -
+	  (rep.start_time.split(':').map(Number)[0] * 60 + rep.start_time.split(':').map(Number)[1])
+	);
+	const endMinutes = h * 60 + m + duration;
+	const endH = Math.floor(endMinutes / 60);
+	const endM = endMinutes % 60;
+	const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 
-    const msPerDay = 86400000;
-    const delta = Math.round(
-      (new Date(rescheduleDate + 'T00:00:00').getTime() - new Date(group.dates[0] + 'T00:00:00').getTime()) / msPerDay
-    );
+	const msPerDay = 86400000;
+	const delta = Math.round(
+	  (new Date(rescheduleDate + 'T00:00:00').getTime() - new Date(group.dates[0] + 'T00:00:00').getTime()) / msPerDay
+	);
 
-    let ok = true;
-    for (const b of group.bookings) {
-      const d = new Date(b.date + 'T00:00:00');
-      d.setDate(d.getDate() + delta);
-      const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+	let ok = true;
+	for (const b of group.bookings) {
+	  const d = new Date(b.date + 'T00:00:00');
+	  d.setDate(d.getDate() + delta);
+	  const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       // 30-day window check for one-off bookings
       if (!group.plan || group.plan.slug !== 'weekly' && group.plan.slug !== 'monthly') {
         const originalDate = new Date(b.date + 'T00:00:00');
@@ -234,21 +241,21 @@
           continue;
         }
       }
-      const r = await postApi('/api/bookings/status', {
-        bookingId: b.id,
-        date: newDate,
-        start_time: rescheduleTime,
-        end_time: endTime,
-        status: 'pending'
-      });
-      if (!r) ok = false;
-    }
+	  const r = await postApi('/api/bookings/status', {
+		bookingId: b.id,
+		date: newDate,
+		start_time: rescheduleTime,
+		end_time: endTime,
+		status: 'pending'
+	  });
+	  if (!r) ok = false;
+	}
 
-    rescheduleLoading = false;
-    showRescheduleModal = false;
-    rescheduleGroup = null;
+	rescheduleLoading = false;
+	showRescheduleModal = false;
+	rescheduleGroup = null;
 
-    if (ok) await loadData();
+	if (ok) await loadData();
   }
 
   interface MemberGroup {
@@ -312,6 +319,7 @@
           </div>
           <p class="text-xs text-dark-500">$99/month · 4 Conference Office hours + 4 Meeting Room hours per month · Included hours expire at month end, no rollover · 10% discount on additional hours · 48-hour priority booking window</p>
         </div>
+        </div>
       </div>
       <div class="grid sm:grid-cols-2 gap-4 mt-4">
         {#if confMeter}
@@ -346,11 +354,10 @@
             <p class="text-xs text-dark-500 mt-1.5">
               {meetMeter.exhausted ? 'Included hours used — overage bills at standard rate' : `Remaining this month: ${meetMeter.remainingLabel}`}
             </p>
-          </div>
-        {/if}
-      </div>
-    </div>
+</div>
   {/if}
+</div>
+{/if}
 
   <div class="flex gap-1 bg-dark-100 border border-dark-200 rounded-lg p-1 mb-8 overflow-x-auto">
     {#each memberTabs as tab}
@@ -549,7 +556,7 @@
     {#if reviews.length === 0}
       <div class="card text-center py-12">
         <svg class="w-12 h-12 text-dark-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.54 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.915a1 1 0 00.95-.69l1.519-4.674z" />
         </svg>
         <h3 class="text-lg font-medium text-dark-900 mb-2">No reviews yet</h3>
         <p class="text-dark-500 mb-6">Complete a booking to leave a review.</p>
@@ -660,6 +667,17 @@
 <!-- Report Modal -->
 <Modal isOpen={showReportModal} title="Submit a Report" on:close={() => showReportModal = false}>
   <form on:submit|preventDefault={submitReport} class="space-y-4">
+    <div>
+      <label for="report-booking" class="block text-sm font-medium text-dark-700 mb-1">
+        Related booking <span class="text-dark-500">(optional)</span>
+      </label>
+      <select id="report-booking" bind:value={selectedReportBookingId} class="input">
+        <option value="">Not related to a specific booking</option>
+        {#each reportableBookings as b (b.id)}
+          <option value={b.id}>{bookingOptionLabel(b)}</option>
+        {/each}
+      </select>
+    </div>
     <div>
       <label for="report-subject" class="block text-sm font-medium text-dark-700 mb-1">Subject</label>
       <input id="report-subject" type="text" bind:value={reportSubject} class="input" placeholder="Brief description of the issue" required />
