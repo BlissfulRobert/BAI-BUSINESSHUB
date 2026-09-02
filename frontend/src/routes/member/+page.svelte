@@ -43,6 +43,8 @@
   let cancelGroup: MemberGroup | null = null;
   let cancelLoading = false;
 
+  let selectedReportBookingId = '';
+
   async function postApi(path: string, payload: unknown): Promise<boolean> {
     const {
       data: { session }
@@ -84,7 +86,7 @@
         .order('created_at', { ascending: false }),
       supabase
         .from('reports')
-        .select('*')
+        .select('*, booking:bookings(booking_number, date, start_time, end_time)')
         .eq('user_id', $user!.id)
         .order('created_at', { ascending: false }),
       supabase.from('memberships').select('*').eq('user_id', $user!.id).maybeSingle(),
@@ -127,6 +129,13 @@
     if (ok) await loadData();
   }
 
+  function bookingOptionLabel(b: Booking): string {
+  const number = b.booking_number ?? b.id.slice(0, 8);
+  return `${number} \u2014 ${b.room?.name ?? 'Room'} \u00b7 ${formatDate(b.date)} \u00b7 ${formatTime(b.start_time)}-${formatTime(b.end_time)}`;
+  }
+
+  $: reportableBookings = bookings.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+
   function openReviewModal(booking: Booking) {
     reviewBooking = booking;
     reviewRating = 5;
@@ -154,26 +163,27 @@
     if (!error) await loadData();
   }
 
-  function openReportModal(booking: Booking | null = null) {
-    reportBooking = booking;
-    reportSubject = '';
-    reportDescription = '';
-    showReportModal = true;
+function openReportModal(booking: Booking | null = null) {
+  reportBooking = booking;
+  selectedReportBookingId = booking?.id ?? '';
+  reportSubject = '';
+  reportDescription = '';
+  showReportModal = true;
   }
 
-  async function submitReport() {
-    reportLoading = true;
+async function submitReport() {
+  reportLoading = true;
 
-    const ok = await postApi('/api/reports', {
-      booking_id: reportBooking?.id || null,
-      subject: reportSubject,
-      description: reportDescription
-    });
+  const ok = await postApi('/api/reports', {
+    booking_id: selectedReportBookingId || null,
+    subject: reportSubject,
+    description: reportDescription
+  });
 
-    reportLoading = false;
-    showReportModal = false;
+  reportLoading = false;
+  showReportModal = false;
 
-    if (ok) await loadData();
+  if (ok) await loadData();
   }
 
   function openRescheduleModal(group: MemberGroup) {
@@ -657,6 +667,17 @@ async function submitReschedule() {
 <!-- Report Modal -->
 <Modal isOpen={showReportModal} title="Submit a Report" on:close={() => showReportModal = false}>
   <form on:submit|preventDefault={submitReport} class="space-y-4">
+    <div>
+      <label for="report-booking" class="block text-sm font-medium text-dark-700 mb-1">
+        Related booking <span class="text-dark-500">(optional)</span>
+      </label>
+      <select id="report-booking" bind:value={selectedReportBookingId} class="input">
+        <option value="">Not related to a specific booking</option>
+        {#each reportableBookings as b (b.id)}
+          <option value={b.id}>{bookingOptionLabel(b)}</option>
+        {/each}
+      </select>
+    </div>
     <div>
       <label for="report-subject" class="block text-sm font-medium text-dark-700 mb-1">Subject</label>
       <input id="report-subject" type="text" bind:value={reportSubject} class="input" placeholder="Brief description of the issue" required />

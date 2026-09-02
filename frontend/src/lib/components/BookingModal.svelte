@@ -507,7 +507,7 @@
 
       const bookings = Array.isArray(result?.bookings) ? result.bookings : [];
       const first = bookings[0];
-      bookingReference = (first?.id as string | undefined) ?? "";
+      bookingReference = (first?.booking_number as string | undefined) ?? (first?.id as string | undefined) ??"";
 
       // Show a dedicated confirmation view instead of auto-closing so the
       // member can see exactly what was submitted and what happens next.
@@ -1182,7 +1182,7 @@
       <p class="mt-3 text-center text-xs text-dark-500">
         This reserves the {seriesDates.length > 1
           ? `${seriesDates.length} days`
-          : "slot"} pending payment. Payment must be completed within 15 minutes
+          : "slot"} pending payment. Payment must be completed within 30 minutes
         or the booking will automatically expire and the room/time slot will be released.
       </p>
       <div class="mt-2 text-center text-xs text-dark-500">
@@ -1190,7 +1190,7 @@
       </div>
       {#if selectedPlan?.slug !== "full-day" && selectedPlan?.slug !== "weekly"}
         <p class="mt-2 text-center text-xs text-dark-500">
-          Payment reminder will be displayed at approximately 10 minutes after
+          Payment reminder will be displayed at approximately 2-5 minutes after
           booking creation, leaving approximately 5 minutes before expiration.
         </p>
       {/if}
@@ -1229,8 +1229,8 @@
           <p class="mt-2 text-xs text-dark-500">
             Reference:
             <span class="font-mono font-semibold text-dark-700"
-              >{bookingReference.slice(0, 8)}</span
-            >
+            >{bookingReference}</span
+          >
           </p>
         {/if}
       </div>
