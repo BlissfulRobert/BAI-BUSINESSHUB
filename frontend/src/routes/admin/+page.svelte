@@ -87,7 +87,7 @@
       supabase.from('bookings').select('*, room:rooms(*), plan:plans(*), profile:profiles(*)').order('date', { ascending: false }),
       supabase.from('rooms').select('*').order('name'),
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-      supabase.from('reports').select('*, profile:profiles(full_name, email)').order('created_at', { ascending: false }),
+      supabase.from('reports').select('*, profile:profiles(full_name, email), booking:bookings(booking_number, date, start_time, end_time)').order('created_at', { ascending: false }),
       supabase.from('gallery').select('*').order('sort_order'),
       supabase.from('plans').select('*').order('sort_order'),
       supabase.from('memberships').select('*'),
@@ -805,6 +805,12 @@
                   <span class={reportMeta.badgeClass}>{reportMeta.label}</span>
                 </div>
                 <p class="text-sm text-dark-500">From: {report.profile?.full_name || 'Unknown'} ({report.profile?.email || ''})</p>
+                {#if report.booking}
+                <p class="text-sm text-dark-500 mt-0.5">
+                  Booking: <span class="font-medium text-dark-700">{report.booking.booking_number}</span>
+                  · {formatDate(report.booking.date)} · {formatTime(report.booking.start_time)}-{formatTime(report.booking.end_time)}
+                </p>
+              {/if}
                 <p class="text-sm text-dark-700 mt-1">{report.description}</p>
                 {#if report.admin_response}
                   <div class="mt-3 p-3 bg-dark-100 border border-dark-200 rounded-lg">

@@ -34,6 +34,7 @@ export type BookingChargeType = 'membership' | 'additional' | null;
 
 export interface Booking {
 	id: string;
+	booking_number: string;
 	room_id: string;
 	user_id: string;
 	plan_id: string | null;
@@ -127,6 +128,12 @@ export interface Report {
 	admin_response: string | null;
 	created_at: string;
 	updated_at: string;
+	booking?: {
+    booking_number: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+  } | null;
 	// Relation populated by Supabase join.
 	profile?: { full_name: string; email: string };
 }

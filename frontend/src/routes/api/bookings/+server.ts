@@ -4,6 +4,7 @@ import { createServerClient } from '$lib/supabase/server';
 import { isPastDate, isWeekend, rangesOverlap, timeToMinutes } from '$lib/utils/dates';
 import { isVictorianHoliday } from '$lib/utils/holidays';
 import { sendMail, getAdminEmails } from '$lib/server/mail';
+import { sendBookingConfirmationEmail, schedulePaymentReminder } from '$lib/server/bookingEmails';
 import type { BookingChargeType, Membership } from '$lib/types/database';
 
 const BLOCKING_STATUSES = ['pending', 'approved', 'paid', 'completed'];
@@ -293,6 +294,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		charge_type: chargeTypeByDate[date] ?? null
 	}));
 
+	// booking_number is assigned automatically by a DB trigger on insert, so
+	// it comes back for free in .select() — no need to generate it here.
 	const { data: bookings, error: insertError } = await supabase.from('bookings').insert(rows).select();
 
 	if (insertError) {
@@ -318,6 +321,34 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	}
 
+	// Booking number(s) for this batch, used across the confirmation email,
+	// the payment reminder, and the admin notification below.
+	const bookingSummaries = (bookings ?? []).map((b) => ({
+		id: b.id as string,
+		booking_number: b.booking_number as string,
+		date: b.date as string,
+		start_time: b.start_time as string,
+		end_time: b.end_time as string
+	}));
+	const bookingNumbersLabel = bookingSummaries.map((b) => b.booking_number).join(', ');
+
+	// Confirm the request to the guest right away, and follow up a few
+	// minutes later with a payment reminder if it's still pending. Both are
+	// fire-and-forget — a mail hiccup must never block the booking response.
+	sendBookingConfirmationEmail({
+		guestEmail: guest_email,
+		guestName: guest_name,
+		roomName: room?.name ?? 'the room',
+		bookings: bookingSummaries
+	});
+
+	schedulePaymentReminder({
+		guestEmail: guest_email,
+		guestName: guest_name,
+		roomName: room?.name ?? 'the room',
+		bookings: bookingSummaries
+	});
+
 	// Notify all admins about the new booking. Fire-and-forget with error
 	// logging so a mail failure never blocks the successful booking response.
 	// `room` was already loaded for membership coverage above.
@@ -326,8 +357,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		const dateList = dates.join(', ');
 		sendMail({
 			to: admins,
-			subject: 'New booking submitted',
-			text: `A new booking has been submitted for ${room?.name ?? 'a room'} on ${dateList} from ${start_time} to ${end_time} by ${guest_name} (${guest_email}). It is pending approval.`
+			subject: `New booking submitted \u2014 ${bookingNumbersLabel}`,
+			text: `A new booking has been submitted for ${room?.name ?? 'a room'} on ${dateList} from ${start_time} to ${end_time} by ${guest_name} (${guest_email}). Booking reference: ${bookingNumbersLabel}. It is pending approval.`
 		});
 	}
 
