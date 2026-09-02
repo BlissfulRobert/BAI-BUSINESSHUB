@@ -66,28 +66,34 @@
     goto('/auth/login');
   }
 
+  // Load data once auth is restored and the user is logged in
+  $: if (!$isLoading && isLoggedIn && loading) {
+    loadData();
+  }
+
   onMount(async () => {
-    await loadData();
+    if ($user) await loadData();
   });
 
   async function loadData() {
+    if (!$user) return;
     const [bookingsRes, reviewsRes, reportsRes, membershipRes, usageRes] = await Promise.all([
       supabase
         .from('bookings')
         .select('*, room:rooms(*), plan:plans(*)')
-        .eq('user_id', $user!.id)
+        .eq('user_id', $user.id)
         .order('date', { ascending: false }),
       supabase
         .from('reviews')
         .select('*, room:rooms(name)')
-        .eq('user_id', $user!.id)
+        .eq('user_id', $user.id)
         .order('created_at', { ascending: false }),
       supabase
         .from('reports')
         .select('*')
-        .eq('user_id', $user!.id)
+        .eq('user_id', $user.id)
         .order('created_at', { ascending: false }),
-      supabase.from('memberships').select('*').eq('user_id', $user!.id).maybeSingle(),
+      supabase.from('memberships').select('*').eq('user_id', $user.id).maybeSingle(),
       supabase
         .from('membership_usage')
         .select('*')
@@ -533,7 +539,7 @@ async function submitReschedule() {
                     <button on:click={() => openReviewModal(rep)} class="btn-ghost-primary">
                       Leave Review
                     </button>
-                  {/if}
+                  {:if}
                 {/if}
               </div>
             </div>
@@ -546,7 +552,7 @@ async function submitReschedule() {
     {#if reviews.length === 0}
       <div class="card text-center py-12">
         <svg class="w-12 h-12 text-dark-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.915a1 1 0 00.95-.69l1.519-4.674z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.54 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
         </svg>
         <h3 class="text-lg font-medium text-dark-900 mb-2">No reviews yet</h3>
         <p class="text-dark-500 mb-6">Complete a booking to leave a review.</p>
