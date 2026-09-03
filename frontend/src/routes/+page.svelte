@@ -627,7 +627,7 @@
       </div>
 
       <div
-        class="h-[400px] lg:h-full min-h-[400px] lg:min-h-[520px] lg:-mr-24 rounded-xl overflow-hidden border border-white/20 shadow-2xl lg:mt-16"
+        class="isolate h-[400px] lg:h-full min-h-[400px] lg:min-h-[520px] lg:-mr-24 rounded-xl overflow-hidden border border-white/20 shadow-2xl lg:mt-16"
       >
         <Map lat={-37.8136} lng={144.9631} zoom={15} title="BAI Business Hub" />
       </div>

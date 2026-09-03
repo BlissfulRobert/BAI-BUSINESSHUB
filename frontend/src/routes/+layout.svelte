@@ -46,7 +46,7 @@
 
 <div class="min-h-screen flex flex-col">
   <header
-    class="border-b border-gray-200 bg-white backdrop-blur-xl sticky top-0 z-50"
+    class="border-b border-primary-800 bg-primary-950 backdrop-blur-xl sticky top-0 z-[1000]"
   >
     <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-20 relative">
@@ -67,7 +67,7 @@
                 class={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                   link.active
                     ? "text-white bg-primary-600"
-                    : "text-primary-700 hover:text-primary-900 hover:bg-primary-50"
+                    : "text-primary-200 hover:text-white hover:bg-primary-900"
                 }`}
               >
                 {link.label}
@@ -83,38 +83,38 @@
             {#if isAdmin}
               <a
                 href="/admin"
-                class="px-3 py-2 text-sm text-primary-700 hover:text-primary-900 transition-colors rounded-lg hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                class="px-3 py-2 text-sm text-primary-200 hover:text-white transition-colors rounded-lg hover:bg-primary-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 Admin
               </a>
             {/if}
             <a
               href="/member"
-              class="px-3 py-2 text-sm text-primary-700 hover:text-primary-900 transition-colors rounded-lg hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              class="px-3 py-2 text-sm text-primary-200 hover:text-white transition-colors rounded-lg hover:bg-primary-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             >
               My Bookings
             </a>
-            <div class="w-px h-6 bg-primary-200"></div>
-            <span class="text-sm text-primary-700 max-w-[120px] truncate">
+            <div class="w-px h-6 bg-primary-700"></div>
+            <span class="text-sm text-primary-200 max-w-[120px] truncate">
               {$profile?.full_name || $user?.email}
             </span>
             <button
               on:click={handleLogout}
-              class="text-sm px-3 py-1.5 rounded-lg border border-primary-300 text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors"
+              class="text-sm px-3 py-1.5 rounded-lg border border-primary-600 text-primary-100 bg-primary-900 hover:bg-primary-800 transition-colors"
             >
               Logout
             </button>
           {:else}
             <a
               href="/auth/login"
-              class="px-3 py-2 text-sm text-primary-700 hover:text-primary-900 transition-colors rounded-lg hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              class="px-3 py-2 text-sm text-primary-200 hover:text-white transition-colors rounded-lg hover:bg-primary-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             >
               Login
             </a>
           {/if}
           <a
             href="/#rooms"
-            class="bg-primary-600 text-white hover:bg-primary-700 text-sm font-medium px-4 py-1.5 rounded-lg transition-colors duration-200"
+            class="bg-gold-500 text-primary-950 hover:bg-gold-400 text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors duration-200"
           >
             Book a room
           </a>
@@ -122,7 +122,7 @@
 
         <button
           on:click={toggleMobileMenu}
-          class="lg:hidden p-2 text-primary-700 hover:text-primary-900 rounded-lg hover:bg-primary-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          class="lg:hidden p-2 text-primary-100 hover:text-white rounded-lg hover:bg-primary-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         >
           <svg
             class="w-6 h-6"
@@ -151,7 +151,7 @@
     </nav>
 
     {#if mobileMenuOpen}
-      <div class="lg:hidden border-t border-gray-200 bg-white backdrop-blur-xl">
+      <div class="lg:hidden border-t border-primary-800 bg-primary-950 backdrop-blur-xl">
         <div class="px-4 py-4 space-y-1">
           {#each navLinks as link}
             <a
@@ -160,7 +160,7 @@
               class="block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500
                 {link.active
                 ? 'text-white bg-primary-600'
-                : 'text-primary-700 hover:text-primary-900 hover:bg-primary-50'}"
+                : 'text-primary-200 hover:text-white hover:bg-primary-900'}"
             >
               {link.label}
             </a>
@@ -168,32 +168,32 @@
           <a
             href="/#rooms"
             on:click={closeMobileMenu}
-            class="block px-3 py-2.5 rounded-lg text-sm font-medium text-primary-700 hover:text-primary-900 hover:bg-primary-50"
+            class="block px-3 py-2.5 rounded-lg text-sm font-medium text-primary-200 hover:text-white hover:bg-primary-900"
           >
             Book a room
           </a>
-          <hr class="border-gray-200 my-2" />
+          <hr class="border-primary-800 my-2" />
           {#if isLoggedIn}
             {#if isAdmin}
               <a
                 href="/admin"
                 on:click={closeMobileMenu}
-                class="block px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg"
+                class="block px-3 py-2.5 text-sm text-primary-200 hover:text-white hover:bg-primary-900 rounded-lg"
                 >Admin Panel</a
               >
             {/if}
             <a
               href="/member"
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg"
+              class="block px-3 py-2.5 text-sm text-primary-200 hover:text-white hover:bg-primary-900 rounded-lg"
               >My Bookings</a
             >
-            <p class="px-3 pt-1 text-sm text-primary-700 truncate">
+            <p class="px-3 pt-1 text-sm text-primary-200 truncate">
               {$profile?.full_name || $user?.email}
             </p>
             <button
               on:click={handleLogout}
-              class="w-full text-left px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg"
+              class="w-full text-left px-3 py-2.5 text-sm text-primary-200 hover:text-white hover:bg-primary-900 rounded-lg"
             >
               Logout
             </button>
@@ -201,13 +201,13 @@
             <a
               href="/auth/login"
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg"
+              class="block px-3 py-2.5 text-sm text-primary-200 hover:text-white hover:bg-primary-900 rounded-lg"
               >Login</a
             >
             <a
               href="/auth/register"
               on:click={closeMobileMenu}
-              class="block px-3 py-2.5 text-sm text-primary-700 hover:text-primary-900 hover:bg-primary-50 rounded-lg font-medium"
+              class="block px-3 py-2.5 text-sm text-primary-200 hover:text-white hover:bg-primary-900 rounded-lg font-medium"
               >Get Started</a
             >
           {/if}
