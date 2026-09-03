@@ -98,8 +98,20 @@
   let adminResponse = "";
   let responseLoading = false;
 
+  // My Profile modal
+  let showProfileModal = false;
+  let profileLoading = false;
+  let profileMessage: { type: "success" | "error"; text: string } | null = null;
+  let pendingPhoneChange = "";
+  let pendingEmailChange = "";
+  let pendingPasswordChange = "";
+  let pendingPasswordConfirm = "";
+  let avatarFile: File | null = null;
+  $: avatarPreview = avatarFile ? URL.createObjectURL(avatarFile) : "";
+
   $: isLoggedIn = !!$user;
   $: isAdmin = $profile?.role === "admin";
+  $: myProfile = $profile ?? null;
 
   $: if (!$isLoading && (!isLoggedIn || !isAdmin)) {
     // goto() cannot run during SSR; redirect only after the page hydrates.
@@ -494,6 +506,135 @@
     await loadData();
   }
 
+  // ----- My Profile handlers -----
+  function clearProfileMessage() {
+    profileMessage = null;
+  }
+
+  function withProfileError(action: () => Promise<void>) {
+    profileLoading = true;
+    profileMessage = null;
+    action()
+      .catch((e: unknown) => {
+        console.error(e);
+        profileMessage = {
+          type: "error",
+          text: (e as Error)?.message || "Something went wrong. Please try again.",
+        };
+      })
+      .finally(() => {
+        profileLoading = false;
+      });
+  }
+
+  async function updatePhone() {
+    const phone = pendingPhoneChange.trim();
+    if (!phone) return;
+    await withProfileError(async () => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ phone })
+        .eq("id", myProfile!.id);
+      if (error) throw new Error(error.message);
+      pendingPhoneChange = "";
+      profileMessage = { type: "success", text: "Phone number updated." };
+      await refreshProfile();
+    });
+  }
+
+  async function updateEmail() {
+    const email = pendingEmailChange.trim();
+    if (!email) return;
+    await withProfileError(async () => {
+      const { data, error } = await supabase.auth.updateUser({ email });
+      if (error) throw new Error(error.message);
+      if (data?.user) {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({ email })
+          .eq("id", myProfile!.id);
+        if (profileError) throw new Error(profileError.message);
+      }
+      pendingEmailChange = "";
+      profileMessage = {
+        type: "success",
+        text: "A confirmation email has been sent. Please verify the new address.",
+      };
+      await refreshProfile();
+    });
+  }
+
+  async function updatePassword() {
+    if (pendingPasswordChange.length < 6) {
+      profileMessage = { type: "error", text: "Password must be at least 6 characters." };
+      return;
+    }
+    if (pendingPasswordChange !== pendingPasswordConfirm) {
+      profileMessage = { type: "error", text: "Passwords do not match." };
+      return;
+    }
+    await withProfileError(async () => {
+      const { error } = await supabase.auth.updateUser({
+        password: pendingPasswordChange,
+      });
+      if (error) throw new Error(error.message);
+      pendingPasswordChange = "";
+      pendingPasswordConfirm = "";
+      profileMessage = { type: "success", text: "Password changed successfully." };
+    });
+  }
+
+  async function refreshProfile() {
+    if (!myProfile) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", myProfile.id)
+      .single();
+    if (data) {
+      profile.set(data);
+    }
+  }
+
+  function onAvatarChange(e: Event) {
+    avatarFile = (e.currentTarget as HTMLInputElement).files?.[0] || null;
+  }
+
+  async function uploadAvatar() {
+    if (!avatarFile || !myProfile) return;
+    await withProfileError(async () => {
+      const fileName = `${myProfile.id}-${Date.now()}-${avatarFile!.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(fileName, avatarFile!, { upsert: true });
+      if (uploadError) throw new Error(uploadError.message);
+
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(fileName);
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: urlData.publicUrl })
+        .eq("id", myProfile.id);
+      if (updateError) throw new Error(updateError.message);
+
+      avatarFile = null;
+      profileMessage = { type: "success", text: "Profile picture updated." };
+      await refreshProfile();
+    });
+  }
+
+  function closeProfileModal() {
+    showProfileModal = false;
+    profileMessage = null;
+    pendingPhoneChange = "";
+    pendingEmailChange = "";
+    pendingPasswordChange = "";
+    pendingPasswordConfirm = "";
+    avatarFile = null;
+  }
+
   $: tabBadge = (
     key: "overview" | "bookings" | "rooms" | "members" | "reports" | "gallery",
   ) => {
@@ -516,14 +657,35 @@
       class="absolute inset-0 opacity-[0.04]"
       style="background-image: radial-gradient(circle at 1px 1px, white 1px, transparent 0); background-size: 24px 24px;"
     ></div>
-    <div class="relative">
-      <h1 class="text-4xl font-bold text-white tracking-tight">
-        Admin Dashboard
-      </h1>
-      <div class="mt-2 h-1 w-16 bg-gold-400 rounded-full"></div>
-      <p class="text-primary-200 mt-3 text-sm font-medium">
-        Manage bookings, rooms, members, and content
-      </p>
+    <div class="relative flex items-start justify-between gap-4">
+      <div>
+        <h1 class="text-4xl font-bold text-white tracking-tight">
+          Admin Dashboard
+        </h1>
+        <div class="mt-2 h-1 w-16 bg-gold-400 rounded-full"></div>
+        <p class="text-primary-200 mt-3 text-sm font-medium">
+          Manage bookings, rooms, members, and content
+        </p>
+      </div>
+      <button
+        on:click={() => (showProfileModal = true)}
+        class="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-sm px-4 py-2.5 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg backdrop-blur-sm flex-shrink-0"
+      >
+        {#if myProfile?.avatar_url}
+          <img
+            src={myProfile.avatar_url}
+            alt="Profile"
+            class="w-6 h-6 rounded-full object-cover ring-2 ring-gold-400"
+          />
+        {:else}
+          <span
+            class="w-6 h-6 rounded-full bg-gold-400 text-primary-900 font-bold text-xs flex items-center justify-center"
+          >
+            {(myProfile?.full_name || 'A')[0].toUpperCase()}
+          </span>
+        {/if}
+        My Profile
+      </button>
     </div>
   </div>
 
@@ -697,7 +859,7 @@
           : tab.key === 'members' ? 'bg-violet-50 border-violet-200 text-violet-700 shadow-sm shadow-violet-100/50'
           : tab.key === 'gallery' ? 'bg-primary-50 border-primary-200 text-primary-700 shadow-sm shadow-primary-100/50'
           : 'bg-red-50 border-red-200 text-red-700 shadow-sm shadow-red-100/50')
-        : 'bg-transparent border-transparent text-dark-400 hover:text-dark-700 hover:bg-dark-100/60'}
+        : 'bg-transparent border-transparent text-dark-900 hover:text-dark-700 hover:bg-dark-100/60'}
       <button
         on:click={() => (activeTab = tab.key)}
         class="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold transition-all duration-200 whitespace-nowrap relative rounded-xl border
@@ -776,7 +938,7 @@
             </div>
             <div>
               <h3 class="text-sm font-bold text-dark-900 tracking-tight">Recent Bookings</h3>
-              <p class="text-xs text-dark-400">{bookings.length} total</p>
+              <p class="text-xs text-dark-900">{bookings.length} total</p>
             </div>
           </div>
           <button
@@ -799,7 +961,7 @@
                 <p class="text-sm font-semibold text-dark-800 truncate">
                   {booking.profile?.full_name || booking.guest_name}
                 </p>
-                <p class="text-xs text-dark-400 truncate">{booking.room?.name || "Room"} · {formatDate(booking.date)}</p>
+                <p class="text-xs text-dark-900 truncate">{booking.room?.name || "Room"} · {formatDate(booking.date)}</p>
               </div>
               <span class={statusMeta.badgeClass}>{statusMeta.label}</span>
             </div>
@@ -807,9 +969,9 @@
           {#if bookings.length === 0}
             <div class="text-center py-8">
               <div class="w-10 h-10 bg-dark-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <svg class="w-5 h-5 text-dark-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                <svg class="w-5 h-5 text-dark-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
               </div>
-              <p class="text-sm text-dark-400">No bookings yet</p>
+              <p class="text-sm text-dark-900">No bookings yet</p>
             </div>
           {/if}
         </div>
@@ -826,7 +988,7 @@
               </div>
               <div>
                 <h3 class="text-sm font-bold text-dark-900 tracking-tight">Pending Approvals</h3>
-                <p class="text-xs text-dark-400">{pendingMembers.length} waiting</p>
+                <p class="text-xs text-dark-900">{pendingMembers.length} waiting</p>
               </div>
             </div>
             <button
@@ -840,7 +1002,7 @@
               <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-2">
                 <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
               </div>
-              <p class="text-xs text-dark-400">All caught up</p>
+              <p class="text-xs text-dark-900">All caught up</p>
             </div>
           {:else}
             <div class="space-y-0">
@@ -853,7 +1015,7 @@
                   </div>
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-dark-800 truncate">{member.full_name}</p>
-                    <p class="text-xs text-dark-400 truncate">{member.email}</p>
+                    <p class="text-xs text-dark-900 truncate">{member.email}</p>
                   </div>
                   <button
                     on:click={() => approveMember(member.id)}
@@ -876,7 +1038,7 @@
               </div>
               <div>
                 <h3 class="text-sm font-bold text-dark-900 tracking-tight">Open Reports</h3>
-                <p class="text-xs text-dark-400">{openReports.length} open</p>
+                <p class="text-xs text-dark-900">{openReports.length} open</p>
               </div>
             </div>
             <button
@@ -890,7 +1052,7 @@
               <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-2">
                 <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
               </div>
-              <p class="text-xs text-dark-400">No open reports</p>
+              <p class="text-xs text-dark-900">No open reports</p>
             </div>
           {:else}
             <div class="space-y-0">
@@ -903,7 +1065,7 @@
                   </div>
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-dark-800 truncate">{report.subject}</p>
-                    <p class="text-xs text-dark-400 truncate">{report.profile?.full_name || "Unknown"}</p>
+                    <p class="text-xs text-dark-900 truncate">{report.profile?.full_name || "Unknown"}</p>
                   </div>
                   <button
                     on:click={() => openReportResponse(report)}
@@ -928,7 +1090,7 @@
         </div>
         <div>
           <h3 class="text-sm font-bold text-dark-900 tracking-tight">Booking Management</h3>
-          <p class="text-xs text-dark-400">{bookingGroups.length} total &middot; {unseenBookingGroups.length} new</p>
+          <p class="text-xs text-dark-900">{bookingGroups.length} total &middot; {unseenBookingGroups.length} new</p>
         </div>
       </div>
     </div>
@@ -952,7 +1114,7 @@
           {@const unseen = tab.key === "all" ? unseenBookingGroups.length : unseenPerStatus(tab.key)}
           <button
             on:click={() => { filterStatus = tab.key; }}
-            class="relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border border-transparent {isActive ? tab.activeBg : 'text-dark-500 hover:text-dark-700 hover:bg-white/50'}"
+            class="relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 border border-transparent {isActive ? tab.activeBg : 'text-dark-900 hover:text-dark-700 hover:bg-white/50'}"
           >
             {#if tab.dot}
               <span class="w-2 h-2 rounded-full {tab.dot} flex-shrink-0 {isActive ? 'ring-2 ring-white/60' : ''}"></span>
@@ -971,7 +1133,7 @@
     <div class="!p-4 mb-5 bg-gradient-to-br from-primary-50/80 to-white border border-primary-100 rounded-xl shadow-sm">
       <div class="flex flex-col sm:flex-row gap-2.5">
         <div class="relative flex-1 min-w-0">
-          <svg class="w-4 h-4 text-dark-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <svg class="w-4 h-4 text-dark-900 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
           <input bind:value={searchQuery} type="search" placeholder="Search room, guest, or email..." class="input !py-2 pl-10 text-sm" />
         </div>
         <input bind:value={dateFilter} type="date" class="input !py-2 sm:w-40 text-sm" aria-label="Filter by date" />
@@ -1019,8 +1181,8 @@
           <div class="w-14 h-14 bg-gradient-to-br from-primary-100 to-primary-200 rounded-2xl flex items-center justify-center mb-4">
             <svg class="w-7 h-7 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
           </div>
-          <p class="text-dark-600 font-semibold mb-1">No bookings found</p>
-          <p class="text-dark-400 text-sm mb-4">Try adjusting your filters or check back later</p>
+          <p class="text-dark-900 font-semibold mb-1">No bookings found</p>
+          <p class="text-dark-900 text-sm mb-4">Try adjusting your filters or check back later</p>
           <button on:click={() => { searchQuery = ""; dateFilter = ""; filterStatus = "all"; }} class="btn-primary text-sm">Clear all filters</button>
         </div>
       </div>
@@ -1029,9 +1191,9 @@
       <div class="flex items-center justify-between px-1 mb-3">
         <div class="flex items-center gap-2.5">
           <input type="checkbox" checked={allVisibleSelected} on:change={toggleSelectAll} class="w-4 h-4 accent-primary-600 rounded" />
-          <span class="text-xs text-dark-400 font-medium">Select all ({filteredBookingGroups.length} groups)</span>
+          <span class="text-xs text-dark-900 font-medium">Select all ({filteredBookingGroups.length} groups)</span>
         </div>
-        <span class="text-xs text-dark-400">{filteredBookingGroups.length} result{filteredBookingGroups.length === 1 ? "" : "s"}</span>
+        <span class="text-xs text-dark-900">{filteredBookingGroups.length} result{filteredBookingGroups.length === 1 ? "" : "s"}</span>
       </div>
 
       <!-- Booking cards grouped by date -->
@@ -1112,12 +1274,12 @@
                             </div>
                             <div class="min-w-0">
                               <p class="font-semibold text-dark-800 truncate">{group.profile?.full_name || group.guest_name}</p>
-                              <p class="text-xs text-dark-400 truncate">{group.guest_email}</p>
+                              <p class="text-xs text-dark-900 truncate">{group.guest_email}</p>
                             </div>
                           </div>
 
                           <!-- Date/Time -->
-                          <div class="flex items-center gap-2 text-sm text-dark-600">
+                          <div class="flex items-center gap-2 text-sm text-dark-900">
                             <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center flex-shrink-0">
                               <svg class="w-3.5 h-3.5 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                             </div>
@@ -1127,7 +1289,7 @@
                               {:else}
                                 <p class="font-medium">{formatDate(group.dates[0])}</p>
                               {/if}
-                              <p class="text-xs text-dark-400">{formatTime(group.start_time)} &ndash; {formatTime(group.end_time)}</p>
+                              <p class="text-xs text-dark-900">{formatTime(group.start_time)} &ndash; {formatTime(group.end_time)}</p>
                             </div>
                           </div>
 
@@ -1149,7 +1311,7 @@
                       <!-- Actions column -->
                       <div class="flex items-center gap-1.5 flex-wrap lg:flex-col lg:items-end lg:flex-shrink-0">
                         {#if unseen}
-                          <button on:click={() => markBookingGroupSeen(group)} class="text-[11px] text-dark-400 hover:text-dark-600 px-2.5 py-1.5 rounded-lg hover:bg-dark-100 transition-colors font-medium" title="Dismiss notification">
+                          <button on:click={() => markBookingGroupSeen(group)} class="text-[11px] text-dark-900 hover:text-dark-900 px-2.5 py-1.5 rounded-lg hover:bg-dark-100 transition-colors font-medium" title="Dismiss notification">
                             <svg class="w-3.5 h-3.5 mr-0.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                             Seen
                           </button>
@@ -1173,7 +1335,7 @@
                           </button>
                         {/if}
                         {#if !isCancelled}
-                          <button on:click={() => updateGroupStatus(group, "cancelled")} class="text-xs text-dark-400 hover:text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors font-medium">
+                          <button on:click={() => updateGroupStatus(group, "cancelled")} class="text-xs text-dark-900 hover:text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors font-medium">
                             <svg class="w-3.5 h-3.5 mr-0.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                             Cancel
                           </button>
@@ -1198,7 +1360,7 @@
         </div>
         <div>
           <h3 class="text-sm font-bold text-dark-900 tracking-tight">Room Management</h3>
-          <p class="text-xs text-dark-400">{rooms.length} rooms &middot; {rooms.filter(r => r.is_active).length} active</p>
+          <p class="text-xs text-dark-900">{rooms.length} rooms &middot; {rooms.filter(r => r.is_active).length} active</p>
         </div>
       </div>
     </div>
@@ -1215,11 +1377,11 @@
           </div>
           <div class="p-4">
             <div class="flex items-center gap-2 mb-3 flex-wrap">
-              <span class="badge bg-dark-100 text-dark-600 border-dark-200 text-xs">
+              <span class="badge bg-dark-100 text-dark-900 border-dark-200 text-xs">
                 <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 {room.capacity} seats
               </span>
-              <span class="badge bg-dark-100 text-dark-600 border-dark-200 text-xs">
+              <span class="badge bg-dark-100 text-dark-900 border-dark-200 text-xs">
                 <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 8a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zm10 0a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"/></svg>
                 {room.layout}
               </span>
@@ -1245,13 +1407,13 @@
         </div>
         <div>
           <h3 class="text-sm font-bold text-dark-900 tracking-tight">Member Directory</h3>
-          <p class="text-xs text-dark-400">{members.length} total &middot; {pendingMembers.length} pending</p>
+          <p class="text-xs text-dark-900">{members.length} total &middot; {pendingMembers.length} pending</p>
         </div>
       </div>
     </div>
     <div class="card !p-4 mb-5">
       <div class="relative max-w-sm">
-        <svg class="w-4 h-4 text-dark-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <svg class="w-4 h-4 text-dark-900 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         <input bind:value={searchQuery} type="search" placeholder="Search name, email, or phone..." class="input !py-2 pl-10 text-sm" />
       </div>
     </div>
@@ -1259,9 +1421,9 @@
       <div class="card text-center py-16">
         <div class="flex flex-col items-center">
           <div class="w-14 h-14 bg-dark-100 rounded-2xl flex items-center justify-center mb-4">
-            <svg class="w-7 h-7 text-dark-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <svg class="w-7 h-7 text-dark-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           </div>
-          <p class="text-dark-500 font-semibold">No members found</p>
+          <p class="text-dark-900 font-semibold">No members found</p>
         </div>
       </div>
     {:else}
@@ -1278,7 +1440,7 @@
                 <div class="flex items-center gap-2 mb-1 flex-wrap">
                   <h3 class="font-bold text-dark-900 tracking-tight">{member.full_name}</h3>
                   <span class={member.is_approved ? "badge-green" : "badge-yellow"}>{member.is_approved ? "Approved" : "Pending"}</span>
-                  <span class="badge bg-dark-100 text-dark-500 border-dark-200">{member.role}</span>
+                  <span class="badge bg-dark-100 text-dark-900 border-dark-200">{member.role}</span>
                   {#if mem}
                     <span class="badge bg-amber-50 text-amber-700 border border-amber-200">
                       <svg class="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
@@ -1286,8 +1448,8 @@
                     </span>
                   {/if}
                 </div>
-                <p class="text-sm text-dark-500">{member.email} &middot; {member.phone || "No phone"}</p>
-                <p class="text-xs text-dark-400 mt-0.5">Joined {formatDate(member.created_at)}</p>
+                <p class="text-sm text-dark-900">{member.email} &middot; {member.phone || "No phone"}</p>
+                <p class="text-xs text-dark-900 mt-0.5">Joined {formatDate(member.created_at)}</p>
               </div>
               <div class="flex items-center gap-2">
                 {#if !member.is_approved}
@@ -1307,23 +1469,23 @@
               <div class="grid sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-dark-100">
                 <div class="bg-dark-50/80 border border-dark-200/60 rounded-xl p-3.5">
                   <div class="flex items-center justify-between mb-2">
-                    <p class="text-xs font-semibold text-dark-600 uppercase tracking-wider">Conference</p>
+                    <p class="text-xs font-semibold text-dark-900 uppercase tracking-wider">Conference</p>
                     <p class="text-xs font-bold text-dark-800">{conf.remainingLabel}</p>
                   </div>
                   <div class="h-2 bg-dark-200 rounded-full overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-500 {conf.exhausted ? 'bg-gradient-to-r from-amber-400 to-amber-500' : 'bg-gradient-to-r from-primary-400 to-primary-600'}" style="width: {Math.min(100, (conf.usedMinutes / conf.includedMinutes) * 100)}%"></div>
                   </div>
-                  <p class="text-[11px] text-dark-400 mt-1.5">{conf.usedMinutes > 0 ? "Used " + formatMinutes(conf.usedMinutes) + " this month" : "No usage this month"}</p>
+                  <p class="text-[11px] text-dark-900 mt-1.5">{conf.usedMinutes > 0 ? "Used " + formatMinutes(conf.usedMinutes) + " this month" : "No usage this month"}</p>
                 </div>
                 <div class="bg-dark-50/80 border border-dark-200/60 rounded-xl p-3.5">
                   <div class="flex items-center justify-between mb-2">
-                    <p class="text-xs font-semibold text-dark-600 uppercase tracking-wider">Meeting</p>
+                    <p class="text-xs font-semibold text-dark-900 uppercase tracking-wider">Meeting</p>
                     <p class="text-xs font-bold text-dark-800">{meet.remainingLabel}</p>
                   </div>
                   <div class="h-2 bg-dark-200 rounded-full overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-500 {meet.exhausted ? 'bg-gradient-to-r from-amber-400 to-amber-500' : 'bg-gradient-to-r from-primary-400 to-primary-600'}" style="width: {Math.min(100, (meet.usedMinutes / meet.includedMinutes) * 100)}%"></div>
                   </div>
-                  <p class="text-[11px] text-dark-400 mt-1.5">{meet.usedMinutes > 0 ? "Used " + formatMinutes(meet.usedMinutes) + " this month" : "No usage this month"}</p>
+                  <p class="text-[11px] text-dark-900 mt-1.5">{meet.usedMinutes > 0 ? "Used " + formatMinutes(meet.usedMinutes) + " this month" : "No usage this month"}</p>
                 </div>
               </div>
             {/if}
@@ -1357,7 +1519,7 @@
     {/if}
     <div class="card !p-4 mb-5">
       <div class="relative max-w-sm">
-        <svg class="w-4 h-4 text-dark-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <svg class="w-4 h-4 text-dark-900 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         <input bind:value={searchQuery} type="search" placeholder="Search subject, description, or reporter..." class="input !py-2 pl-10 text-sm" />
       </div>
     </div>
@@ -1365,9 +1527,9 @@
       <div class="card text-center py-16">
         <div class="flex flex-col items-center">
           <div class="w-14 h-14 bg-dark-100 rounded-2xl flex items-center justify-center mb-4">
-            <svg class="w-7 h-7 text-dark-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <svg class="w-7 h-7 text-dark-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
           </div>
-          <p class="text-dark-500 font-semibold">No reports found</p>
+          <p class="text-dark-900 font-semibold">No reports found</p>
         </div>
       </div>
     {:else}
@@ -1387,20 +1549,20 @@
                   <h3 class="font-bold text-dark-900 tracking-tight">{report.subject}</h3>
                   <span class={reportMeta.badgeClass}>{reportMeta.label}</span>
                 </div>
-                <div class="flex items-center gap-1.5 text-sm text-dark-500 mb-2">
-                  <svg class="w-3.5 h-3.5 text-dark-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                <div class="flex items-center gap-1.5 text-sm text-dark-900 mb-2">
+                  <svg class="w-3.5 h-3.5 text-dark-900 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                   <span class="font-medium text-dark-700">{report.profile?.full_name || "Unknown"}</span>
-                  <span class="text-dark-300">&middot;</span>
-                  <span class="text-dark-400">{report.profile?.email || ""}</span>
+                  <span class="text-dark-900">&middot;</span>
+                  <span class="text-dark-900">{report.profile?.email || ""}</span>
                 </div>
                 {#if report.booking}
                   <div class="inline-flex items-center gap-1.5 bg-dark-50 border border-dark-200/60 rounded-lg px-2.5 py-1 mb-2">
-                    <svg class="w-3 h-3 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    <svg class="w-3 h-3 text-dark-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                     <span class="text-xs font-semibold text-dark-700">{report.booking.booking_number}</span>
-                    <span class="text-xs text-dark-400">{formatDate(report.booking.date)} &middot; {formatTime(report.booking.start_time)}-{formatTime(report.booking.end_time)}</span>
+                    <span class="text-xs text-dark-900">{formatDate(report.booking.date)} &middot; {formatTime(report.booking.start_time)}-{formatTime(report.booking.end_time)}</span>
                   </div>
                 {/if}
-                <p class="text-sm text-dark-600 leading-relaxed">{report.description}</p>
+                <p class="text-sm text-dark-900 leading-relaxed">{report.description}</p>
                 {#if report.admin_response}
                   <div class="mt-3 bg-primary-50/60 border border-primary-200/40 rounded-xl overflow-hidden">
                     <div class="px-3.5 py-2 bg-primary-100/50 border-b border-primary-200/30">
@@ -1411,11 +1573,11 @@
                     </div>
                   </div>
                 {/if}
-                <p class="text-xs text-dark-400 mt-2.5">{formatDate(report.created_at)}</p>
+                <p class="text-xs text-dark-900 mt-2.5">{formatDate(report.created_at)}</p>
               </div>
               <div class="flex flex-col items-end gap-1.5">
                 {#if !report.is_seen}
-                  <button on:click={() => markReportSeen(report)} class="text-xs text-dark-400 hover:text-dark-600 px-2 py-1 rounded-md hover:bg-dark-100 transition-colors font-medium" title="Dismiss">Dismiss</button>
+                  <button on:click={() => markReportSeen(report)} class="text-xs text-dark-900 hover:text-dark-900 px-2 py-1 rounded-md hover:bg-dark-100 transition-colors font-medium" title="Dismiss">Dismiss</button>
                 {/if}
                 <button on:click={() => openReportResponse(report)} class="btn-ghost-primary text-sm">{report.admin_response ? "Update" : "Respond"}</button>
               </div>
@@ -1434,7 +1596,7 @@
         </div>
         <div>
           <h3 class="text-sm font-bold text-dark-900 tracking-tight">Gallery</h3>
-          <p class="text-xs text-dark-400">{galleryImages.length} images</p>
+          <p class="text-xs text-dark-900">{galleryImages.length} images</p>
         </div>
       </div>
       <button on:click={() => (showImageUploadModal = true)} class="btn-primary text-sm">
@@ -1447,10 +1609,10 @@
       <div class="card text-center py-16">
         <div class="flex flex-col items-center">
           <div class="w-14 h-14 bg-dark-100 rounded-2xl flex items-center justify-center mb-4">
-            <svg class="w-7 h-7 text-dark-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <svg class="w-7 h-7 text-dark-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
           </div>
-          <p class="text-dark-500 font-semibold mb-1">No images uploaded yet</p>
-          <p class="text-dark-400 text-sm mb-4">Start building your gallery</p>
+          <p class="text-dark-900 font-semibold mb-1">No images uploaded yet</p>
+          <p class="text-dark-900 text-sm mb-4">Start building your gallery</p>
           <button on:click={() => (showImageUploadModal = true)} class="btn-primary">Upload First Image</button>
         </div>
       </div>
@@ -1475,7 +1637,7 @@
             </div>
             <div class="p-3">
               <p class="text-sm font-semibold text-dark-900 truncate">{image.title}</p>
-              <p class="text-xs text-dark-400 capitalize">{image.category}</p>
+              <p class="text-xs text-dark-900 capitalize">{image.category}</p>
             </div>
           </div>
         {/each}
@@ -1525,7 +1687,7 @@
       <label
         for="gallery-description"
         class="block text-sm font-semibold text-dark-700 mb-1.5"
-        >Description <span class="text-dark-400 font-normal">(optional)</span></label
+        >Description <span class="text-dark-900 font-normal">(optional)</span></label
       >
       <input
         id="gallery-description"
@@ -1578,7 +1740,7 @@
         <p class="text-sm text-dark-900 font-semibold">
           {reportToRespond.subject}
         </p>
-        <p class="text-sm text-dark-600 mt-1 leading-relaxed">{reportToRespond.description}</p>
+        <p class="text-sm text-dark-900 mt-1 leading-relaxed">{reportToRespond.description}</p>
       </div>
 
       <div>
@@ -1612,5 +1774,166 @@
         </button>
       </div>
     </form>
+  {/if}
+</Modal>
+
+<!-- My Profile Modal -->
+<Modal
+  isOpen={showProfileModal}
+  title="My Profile"
+  on:close={closeProfileModal}
+>
+  {#if myProfile}
+    <div class="space-y-6">
+      {#if profileMessage}
+        <div
+          class="rounded-xl px-4 py-3 text-sm font-medium border {profileMessage.type === 'success'
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            : 'bg-red-50 text-red-700 border-red-200'}"
+        >
+          {profileMessage.text}
+        </div>
+      {/if}
+
+      <!-- Profile picture (circle) -->
+      <div class="flex flex-col items-center gap-3">
+        <div class="relative">
+          {#if avatarPreview}
+            <img
+              src={avatarPreview}
+              alt="Profile preview"
+              class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg"
+            />
+          {:else if myProfile.avatar_url}
+            <img
+              src={myProfile.avatar_url}
+              alt="Profile"
+              class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg"
+            />
+          {:else}
+            <div
+              class="w-24 h-24 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 ring-4 ring-primary-100 shadow-lg flex items-center justify-center"
+            >
+              <span class="text-3xl font-bold text-primary-700">
+                {(myProfile.full_name || 'A')[0].toUpperCase()}
+              </span>
+            </div>
+          {/if}
+        </div>
+        <p class="text-lg font-bold text-dark-900 tracking-tight">{myProfile.full_name}</p>
+        <div class="flex items-center gap-1.5">
+          <label
+            for="avatar-upload"
+            class="cursor-pointer text-xs font-semibold text-primary-700 hover:bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-200 transition-all"
+          >
+            Change Picture
+          </label>
+          <input
+            id="avatar-upload"
+            type="file"
+            accept="image/*"
+            class="sr-only"
+            on:change={onAvatarChange}
+          />
+          {#if avatarFile}
+            <button
+              on:click={uploadAvatar}
+              disabled={profileLoading}
+              class="text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg transition-all"
+            >
+              {profileLoading ? "Saving..." : "Save picture"}
+            </button>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Details table -->
+      <div class="overflow-hidden border border-dark-200/70 rounded-xl">
+        <!-- Email row -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-4 bg-dark-50/60 border-b border-dark-200/70">
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-semibold text-dark-900 uppercase tracking-wider mb-0.5">Email</p>
+            <p class="text-sm font-medium text-dark-800 truncate">{myProfile.email}</p>
+          </div>
+          <input
+            type="email"
+            bind:value={pendingEmailChange}
+            placeholder="New email"
+            class="input !py-1.5 text-xs sm:w-56"
+          />
+          <button
+            on:click={updateEmail}
+            disabled={profileLoading || !pendingEmailChange.trim()}
+            class="btn-primary text-xs !py-1.5 flex-shrink-0 disabled:opacity-50"
+          >Change Email</button>
+        </div>
+
+        <!-- Password row -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-4 bg-white border-b border-dark-200/70">
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-semibold text-dark-900 uppercase tracking-wider mb-0.5">Password</p>
+            <p class="text-sm font-medium text-dark-800">••••••••••</p>
+          </div>
+          <input
+            type="password"
+            bind:value={pendingPasswordChange}
+            placeholder="New password"
+            class="input !py-1.5 text-xs sm:w-40"
+          />
+          <input
+            type="password"
+            bind:value={pendingPasswordConfirm}
+            placeholder="Confirm"
+            class="input !py-1.5 text-xs sm:w-28"
+          />
+          <button
+            on:click={updatePassword}
+            disabled={profileLoading || !pendingPasswordChange}
+            class="btn-primary text-xs !py-1.5 flex-shrink-0 disabled:opacity-50"
+          >Change Password</button>
+        </div>
+
+        <!-- Phone row -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-4 bg-dark-50/60">
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-semibold text-dark-900 uppercase tracking-wider mb-0.5">Phone</p>
+            <p class="text-sm font-medium text-dark-800 truncate">{myProfile.phone || "Not set"}</p>
+          </div>
+          <input
+            type="tel"
+            bind:value={pendingPhoneChange}
+            placeholder="New phone number"
+            class="input !py-1.5 text-xs sm:w-56"
+          />
+          <button
+            on:click={updatePhone}
+            disabled={profileLoading || !pendingPhoneChange.trim()}
+            class="btn-primary text-xs !py-1.5 flex-shrink-0 disabled:opacity-50"
+          >Change Phone</button>
+        </div>
+      </div>
+
+      <!-- Missing details -->
+      <div class="bg-amber-50/60 border border-amber-200/60 rounded-xl p-4">
+        <p class="text-xs font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Details needed
+        </p>
+        <ul class="space-y-1.5">
+          {#if !myProfile.phone}
+            <li class="text-sm text-amber-800">Add your <span class="font-semibold">phone number</span> so we can reach you.</li>
+          {/if}
+          {#if !myProfile.avatar_url}
+            <li class="text-sm text-amber-800">Add a <span class="font-semibold">profile picture</span> to personalize your account.</li>
+          {/if}
+          {#if myProfile.phone && myProfile.avatar_url}
+            <li class="text-sm text-emerald-700 flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              All details are filled in. Great job!
+            </li>
+          {/if}
+        </ul>
+      </div>
+    </div>
   {/if}
 </Modal>

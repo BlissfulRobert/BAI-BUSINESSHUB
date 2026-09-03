@@ -65,6 +65,7 @@ export interface Profile {
 	phone: string | null;
 	role: 'admin' | 'client';
 	is_approved: boolean;
+	avatar_url: string | null;
 	created_at: string;
 	membership?: Membership;
 }
