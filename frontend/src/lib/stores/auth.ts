@@ -6,16 +6,45 @@ export const user = writable<any>(null);
 export const profile = writable<Profile | null>(null);
 export const isLoading = writable<boolean>(true);
 
-// Restore the session on initial load, then keep the stores in sync with
-// future auth events (login, logout, token refresh). Without this, the
-// initial page render can see `isLoading === true` and `user === null`
-// forever, which causes dashboards to hang on refresh.
-supabase.auth.getSession().then(({ data: { session } }) => {
-  user.set(session?.user ?? null);
-  isLoading.set(false);
-});
+async function fetchProfile(userId: string | undefined): Promise<Profile | null> {
+  if (!userId) return null;
+  const { data } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
+  return data ?? null;
+}
 
-supabase.auth.onAuthStateChange((_event, session) => {
+// A version counter ensures that when multiple syncSession calls are
+// in flight (from both getSession and onAuthStateChange), only the
+// most recent one is allowed to clear isLoading. This prevents a stale
+// onAuthStateChange callback (e.g. SIGNED_OUT from a failed token
+// refresh) from overwriting a valid session that is still being
+// fetched by an earlier call.
+let syncVersion = 0;
+
+async function syncSession(
+  session: { user: { id: string } | null } | null,
+  version: number
+) {
   user.set(session?.user ?? null);
-  isLoading.set(false);
+  profile.set(await fetchProfile(session?.user?.id));
+  if (version === syncVersion) {
+    isLoading.set(false);
+  }
+}
+
+// Seed from the cached session so the UI can render immediately.
+const v1 = ++syncVersion;
+supabase.auth
+  .getSession()
+  .then(({ data: { session } }) => syncSession(session, v1));
+
+// Keep in sync with real auth events (login, logout, token refresh).
+// onAuthStateChange is the source of truth once Supabase has
+// determined the actual session state.
+supabase.auth.onAuthStateChange((_event, session) => {
+  const v = ++syncVersion;
+  syncSession(session, v);
 });

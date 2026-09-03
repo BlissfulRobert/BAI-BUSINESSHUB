@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { supabase } from "$lib/supabase/client";
@@ -12,39 +11,6 @@
   $: isLoggedIn = !!$user;
   $: isAdmin = $profile?.role === "admin";
   $: isHome = currentPath === "/";
-
-  onMount(async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    $user = session?.user ?? null;
-
-    if ($user) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", $user.id)
-        .single();
-      $profile = data;
-    }
-
-    supabase.auth.onAuthStateChange(async (_event, session) => {
-      $user = session?.user ?? null;
-
-      if ($user) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", $user.id)
-          .single();
-        $profile = data;
-      } else {
-        $profile = null;
-      }
-    });
-
-    $isLoading = false;
-  });
 
   async function handleLogout() {
     await supabase.auth.signOut();

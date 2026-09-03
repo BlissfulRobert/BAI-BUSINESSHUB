@@ -147,6 +147,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	// are updated alongside the status when provided.
 	const patch: Record<string, unknown> = { status };
 
+	// Admin actions also dismiss the new-request notification dot.
+	if (isAdmin) patch.is_seen = true;
+
 	// You can't reschedule onto a closed day (weekend or Victorian public holiday).
 	if (body.date && (isWeekend(body.date) || isVictorianHoliday(body.date))) {
 		return json(

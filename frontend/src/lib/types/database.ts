@@ -49,6 +49,7 @@ export interface Booking {
 	payment_method: PaymentMethod;
 	charge_type: BookingChargeType; // membership-covered, additional usage, or null
 	notes: string | null;
+	is_seen: boolean; // false while the admin has yet to view/act on the booking
 	created_at: string;
 	updated_at: string;
 	// Relations populated by Supabase joins (e.g. `*, room:rooms(*), plan:plans(*), profile:profiles(*)`).
@@ -126,6 +127,7 @@ export interface Report {
 	description: string;
 	status: ReportStatus;
 	admin_response: string | null;
+	is_seen: boolean; // false while the admin has yet to view/respond to the report
 	created_at: string;
 	updated_at: string;
 	booking?: {

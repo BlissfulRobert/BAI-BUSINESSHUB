@@ -49,7 +49,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const { error: updateError } = await supabase
 		.from('reports')
-		.update({ admin_response: response, status: 'resolved' })
+		.update({ admin_response: response, status: 'resolved', is_seen: true })
 		.eq('id', reportId);
 
 	if (updateError) {
