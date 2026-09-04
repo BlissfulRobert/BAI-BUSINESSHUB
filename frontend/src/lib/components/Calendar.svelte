@@ -2,6 +2,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import { buildMonthGrid, isWeekend, toISODate, type CalendarDay } from '$lib/utils/dates';
 	import { isVictorianHoliday } from '$lib/utils/holidays';
+	import { safeStringKey } from '$lib/utils/keys';
 	import type { Booking } from '$lib/types/database';
 
 	/** All blocking bookings for the room, keyed by ISO date. */
@@ -103,7 +104,7 @@
 	</div>
 
 	<div class="mt-1 grid grid-cols-7 gap-1">
-		{#each days as day (day.iso)}
+		{#each days as day, di (safeStringKey(day.iso, di))}
 			{@const beyondLookahead = day.iso > toISODate(maxDate)}
 			{@const isClosedDay = isNonBookable(day.iso)}
 			{@const disabled = day.isPast || day.isFullyBooked || !day.isCurrentMonth || beyondLookahead || isClosedDay}

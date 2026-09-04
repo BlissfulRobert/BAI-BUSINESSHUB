@@ -1,7 +1,7 @@
 -- Update room capacities and descriptions to match the current rental rate
 -- structure (see Room Rental Rate Structure):
---   Conference Room  -> capacity up to 16 people
---   Meeting Room     -> capacity up to 8 people
+--   Conference Room     -> capacity up to 16 people
+--   Consultation Room   -> capacity up to 8 people
 -- These run as idempotent UPDATEs so they apply to existing live data as well
 -- as fresh setups (where the seed still inserts the default values first).
 

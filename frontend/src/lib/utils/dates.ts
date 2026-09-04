@@ -44,7 +44,7 @@ export interface TimeSlot {
  * Builds candidate start-time slots for a given plan duration, marking any
  * slot unavailable if it overlaps an existing booking or runs past closing.
  * `existingBookings` should already be filtered to the same room + date and
- * to statuses that hold the slot (pending/approved/paid/completed).
+ * to statuses that hold the slot (pending/paid/completed).
  */
 export function buildTimeSlots(durationHours: number, existingBookings: Booking[]): TimeSlot[] {
 	const openMin = HUB_OPEN_HOUR * 60;

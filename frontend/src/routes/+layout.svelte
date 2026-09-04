@@ -38,7 +38,7 @@
 
   const navLinks = [
     navLink("/", "Home"),
-    navLink("/#rooms", "Meeting spaces"),
+    navLink("/#rooms", "Rooms"),
     navLink("/#about", "About us"),
     navLink("/policies", "FAQs & Policies"),
   ];
@@ -49,8 +49,8 @@
     class="border-b border-primary-800 bg-primary-950 backdrop-blur-xl sticky top-0 z-[1000]"
   >
     <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-20 relative">
-        <div class="flex items-center gap-10 flex-1">
+      <div class="flex items-center h-20 relative">
+        <div class="flex-1 flex items-center">
           <a href="/" class="flex items-center">
             <img
               src="/bai-business-logo.png"
@@ -58,28 +58,33 @@
               class="h-12 w-auto"
             />
           </a>
-          <div
-            class="hidden lg:flex items-center gap-1 flex-1 justify-center w-full"
-          >
-            {#each navLinks as link}
-              <a
-                href={link.path}
-                class={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
-                  link.active
-                    ? "text-white bg-primary-600"
-                    : "text-primary-200 hover:text-white hover:bg-primary-900"
-                }`}
-              >
-                {link.label}
-              </a>
-            {/each}
-          </div>
         </div>
 
-        <div class="hidden lg:flex items-center gap-3">
+        <div class="hidden lg:flex items-center gap-1">
+          {#each navLinks as link}
+            <a
+              href={link.path}
+              class={`px-3 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+                link.active
+                  ? "text-white bg-primary-600"
+                  : "text-primary-200 hover:text-white hover:bg-primary-900"
+              }`}
+            >
+              {link.label}
+            </a>
+          {/each}
+        </div>
+
+        <div class="hidden lg:flex flex-1 items-center justify-end gap-2">
           {#if $isLoading}
             <div class="w-20 h-8 bg-white/15 rounded animate-pulse"></div>
           {:else if isLoggedIn}
+            <a
+              href="/member"
+              class="px-3 py-2 text-sm text-primary-200 hover:text-white transition-colors rounded-lg hover:bg-primary-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            >
+              My Bookings
+            </a>
             {#if isAdmin}
               <a
                 href="/admin"
@@ -88,19 +93,10 @@
                 Admin
               </a>
             {/if}
-            <a
-              href="/member"
-              class="px-3 py-2 text-sm text-primary-200 hover:text-white transition-colors rounded-lg hover:bg-primary-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-            >
-              My Bookings
-            </a>
             <div class="w-px h-6 bg-primary-700"></div>
-            <span class="text-sm text-primary-200 max-w-[120px] truncate">
-              {$profile?.full_name || $user?.email}
-            </span>
             <button
               on:click={handleLogout}
-              class="text-sm px-3 py-1.5 rounded-lg border border-primary-600 text-primary-100 bg-primary-900 hover:bg-primary-800 transition-colors"
+              class="text-sm px-3 py-2 rounded-lg border border-primary-600 text-primary-100 bg-primary-900 hover:bg-primary-800 transition-colors"
             >
               Logout
             </button>
@@ -114,7 +110,7 @@
           {/if}
           <a
             href="/#rooms"
-            class="bg-gold-500 text-primary-950 hover:bg-gold-400 text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors duration-200"
+            class="bg-gold-500 text-primary-950 hover:bg-gold-400 text-sm font-semibold px-4 py-2 rounded-lg transition-colors duration-200"
           >
             Book a room
           </a>
@@ -168,7 +164,7 @@
           <a
             href="/#rooms"
             on:click={closeMobileMenu}
-            class="block px-3 py-2.5 rounded-lg text-sm font-medium text-primary-200 hover:text-white hover:bg-primary-900"
+            class="block px-3 py-2.5 rounded-lg text-sm font-semibold text-primary-950 bg-gold-500 hover:bg-gold-400 transition-colors"
           >
             Book a room
           </a>
@@ -233,7 +229,7 @@
           </div>
           <p class="text-sm text-dark-400 leading-relaxed">
             Premium workspaces designed to boost productivity. Professional
-            meeting rooms and conference spaces for your business needs.
+            consultation rooms and conference spaces for your business needs.
           </p>
         </div>
 

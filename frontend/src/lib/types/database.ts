@@ -28,7 +28,7 @@ export interface Plan {
 	sort_order: number;
 }
 
-export type BookingStatus = 'pending' | 'approved' | 'paid' | 'completed' | 'cancelled';
+export type BookingStatus = 'pending' | 'paid' | 'completed' | 'cancelled' | 'expired';
 export type PaymentMethod = 'onsite';
 export type BookingChargeType = 'membership' | 'additional' | null;
 
@@ -76,7 +76,7 @@ export interface Membership {
 	id: string;
 	user_id: string;
 	included_conference_hours: number;
-	included_meeting_hours: number;
+	included_consultation_hours: number;
 	is_active: boolean;
 	created_at: string;
 	updated_at: string;
@@ -89,7 +89,7 @@ export interface MembershipUsage {
 	membership_id: string;
 	period_start: string; // ISO date
 	period_end: string; // ISO date
-	room_slug: 'conference-room' | 'meeting-room';
+	room_slug: 'conference-room' | 'consultation-room';
 	used_minutes: number;
 	updated_at: string;
 }

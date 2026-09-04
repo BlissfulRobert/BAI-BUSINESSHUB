@@ -12,7 +12,7 @@ VALUES
     1,
     '1 hour',
     50.00,
-    ARRAY['30-minute or 1-hour booking', 'Conference or Meeting Room', 'WiFi & AV Equipment', 'Coffee & Tea'],
+    ARRAY['30-minute or 1-hour booking', 'Conference or Consultation Room', 'WiFi & AV Equipment', 'Coffee & Tea'],
     true,
     1
   ),
@@ -23,7 +23,7 @@ VALUES
     4,
     'Half-day',
     200.00,
-    ARRAY['Room access for up to 4 hours', 'Conference or Meeting Room', 'WiFi & AV Equipment', 'Coffee & Tea'],
+    ARRAY['Room access for up to 4 hours', 'Conference or Consultation Room', 'WiFi & AV Equipment', 'Coffee & Tea'],
     true,
     2
   ),
@@ -34,7 +34,7 @@ VALUES
     8,
     'Full-day',
     350.00,
-    ARRAY['Room access for the full business day', 'Conference or Meeting Room', 'WiFi & AV Equipment', 'Coffee & Tea', 'Kitchen Access'],
+    ARRAY['Room access for the full business day', 'Conference or Consultation Room', 'WiFi & AV Equipment', 'Coffee & Tea', 'Kitchen Access'],
     true,
     3
   ),
@@ -45,7 +45,7 @@ VALUES
     40,
     'Weekly',
     1600.00,
-    ARRAY['5 weekdays (Mon-Fri)', 'Priority room booking', 'Conference or Meeting Room', 'WiFi & AV Equipment'],
+    ARRAY['5 weekdays (Mon-Fri)', 'Priority room booking', 'Conference or Consultation Room', 'WiFi & AV Equipment'],
     true,
     4
   ),
@@ -56,7 +56,7 @@ VALUES
     176,
     'Monthly',
     6400.00,
-    ARRAY['Daily access for the month', 'Priority room booking', 'Conference or Meeting Room', 'WiFi & AV Equipment'],
+    ARRAY['Daily access for the month', 'Priority room booking', 'Conference or Consultation Room', 'WiFi & AV Equipment'],
     true,
     5
   );
@@ -79,9 +79,9 @@ VALUES (
 
 INSERT INTO rooms (name, slug, description, capacity, price_per_hour, layout, amenities, equipment, is_active)
 VALUES (
-  'Meeting Room',
-  'meeting-room',
-  'A professional meeting room designed for focused discussions and small team collaborations. Perfect for client meetings, interviews, and brainstorming sessions. Features modern decor and essential meeting amenities.',
+  'Consultation Room',
+  'consultation-room',
+  'A professional consultation room designed for focused discussions, client meetings, interviews, and small team collaborations. Features modern decor and essential meeting amenities.',
   8,
   30.00,
   'Rectangular',
@@ -97,7 +97,7 @@ VALUES (
 INSERT INTO gallery (title, description, image_url, category, sort_order, is_active)
 VALUES
   ('Conference Room Overview', 'Our premium conference room with boardroom seating for 16', '/office.png', 'room', 1, true),
-  ('Meeting Room Interior', 'Modern meeting room with comfortable seating for 8', '/meeting.png', 'room', 2, true),
+  ('Consultation Room Interior', 'Modern consultation room with comfortable seating for 8', '/meeting.png', 'room', 2, true),
   ('Hub Entrance', 'Welcome to BAI Business Hub', '/images/placeholder-entrance.jpg', 'facility', 3, true),
   ('Common Area', 'Collaborative common area for networking', '/images/placeholder-common.jpg', 'facility', 4, true),
   ('Kitchen & Break Room', 'Fully equipped kitchen for members', '/images/placeholder-kitchen.jpg', 'facility', 5, true),

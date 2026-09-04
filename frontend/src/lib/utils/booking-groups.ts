@@ -10,7 +10,9 @@ export function seriesKey(b: Booking): string {
 	if (slug === 'weekly' || slug === 'monthly') {
 		return `series:${b.room_id}:${b.user_id}:${b.plan_id}:${b.start_time}:${b.end_time}:${b.created_at}`;
 	}
-	return `single:${b.id}`;
+	// Single bookings are keyed by their row id. Fall back to the empty string
+	// only if the id is missing; groupBookings guarantees a unique non-empty key.
+	return `single:${b.id ?? ''}`;
 }
 
 export interface BookingGroup {
@@ -25,26 +27,36 @@ export interface BookingGroup {
 
 // Groups bookings into series, preserving booking order (rows sorted by date
 // ascending within each group). Non-series bookings become their own group.
+// Keys and dates are de-duplicated so a keyed {#each} never sees a null or
+// duplicate key (which would crash the UI).
 export function groupBookings(bookings: Booking[]): BookingGroup[] {
 	const ordered = [...bookings].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 	const map = new Map<string, BookingGroup>();
-	for (const b of ordered) {
-		const key = seriesKey(b);
-		const existing = map.get(key);
-		if (existing) {
-			existing.bookings.push(b);
-			existing.dates.push(b.date);
-			existing.dates.sort();
-		} else {
-			map.set(key, {
+	for (let i = 0; i < ordered.length; i++) {
+		const b = ordered[i];
+		let key = seriesKey(b);
+		// Guarantee a non-empty, unique key even if a row is missing its id.
+		if (!key || map.has(key)) {
+			key = `group:${i}:${b.id ?? ''}`;
+		}
+		let existing = map.get(key);
+		if (!existing) {
+			existing = {
 				key,
 				room: b.room,
 				plan: b.plan,
-				bookings: [b],
-				dates: [b.date],
+				bookings: [],
+				dates: [],
 				status: b.status,
 				isSeries: key.startsWith('series:')
-			});
+			};
+			map.set(key, existing);
+		}
+		existing.bookings.push(b);
+		// Keep dates unique and sorted so keyed {#each ... (iso)} never collides.
+		if (b.date && !existing.dates.includes(b.date)) {
+			existing.dates.push(b.date);
+			existing.dates.sort();
 		}
 	}
 	return [...map.values()];
