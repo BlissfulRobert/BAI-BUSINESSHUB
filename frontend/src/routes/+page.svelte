@@ -1,8 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
   import { supabase } from "$lib/supabase/client";
-  import { user } from "$lib/stores/auth";
   import RoomCard from "$lib/components/RoomCard.svelte";
   import BookingModal from "$lib/components/BookingModal.svelte";
   import PlanCard from "$lib/components/PlanCard.svelte";
@@ -44,6 +42,8 @@
     galleryImages = galleryRes.data ?? [];
     reviews = reviewsRes.data ?? [];
     loading = false;
+
+    maybeResumeGuestBooking();
   });
 
   function getRatingStars(rating: number): string[] {
@@ -52,22 +52,38 @@
     );
   }
   function openBooking(room: Room) {
-    if (!$user) {
-      // Visitors must register (and log in) before they can book a room, so
-      // they don't fill out the whole wizard only to be blocked at submit.
-      goto("/auth/register?returnTo=/#rooms");
-      return;
-    }
+    // The booking wizard is open to everyone. Guests may build their full
+    // booking and are only asked to log in/register at the final "Confirm
+    // Booking" step, after which they're routed back here to finish.
     selectedRoom = room;
     bookingModalOpen = true;
+  }
+
+  // When a guest returns from login/register (returnTo=/#book) after the modal
+  // saved their in-progress booking draft, re-open the modal on the right room.
+  // The modal itself restores the saved draft fields on open.
+  function maybeResumeGuestBooking() {
+    try {
+      if (typeof window === "undefined" || window.location.hash !== "#book") return;
+      const raw = sessionStorage.getItem("bai_booking_draft");
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (!draft?.room_id) return;
+      const roomForDraft = rooms.find((r) => r.id === draft.room_id) ?? null;
+      if (!roomForDraft) return;
+      selectedRoom = roomForDraft;
+      bookingModalOpen = true;
+    } catch {
+      // Ignore malformed drafts / storage failures.
+    }
   }
 </script>
 
 <svelte:head>
-  <title>BAI Business Hub - Premium Meeting & Conference Rooms</title>
+  <title>BAI Business Hub - Premium Consultation & Conference Rooms</title>
   <meta
     name="description"
-    content="Book premium meeting rooms and conference spaces at BAI Business Hub. Flexible booking plans, modern amenities, and professional spaces for your business needs."
+    content="Book premium consultation rooms and conference spaces at BAI Business Hub. Flexible booking plans, modern amenities, and professional spaces for your business needs."
   />
 </svelte:head>
 
@@ -103,7 +119,7 @@
           <span class="text-primary-600"> Designed to Boost Productivity</span>
         </h1>
         <p class="text-lg text-dark-500 mb-8 max-w-lg">
-          Get more done at BAI Business Hub with world-class meeting rooms,
+          Get more done at BAI Business Hub with world-class consultation rooms,
           professional conference spaces, and flexible booking plans designed to
           impress.
         </p>
@@ -123,7 +139,7 @@
         </div>
 
         <p class="mt-4 text-sm text-dark-500">
-          No payment today — pay on-site once your booking is approved.
+          Pay on-site once your booking is confirmed.
         </p>
 
         <div
@@ -172,7 +188,7 @@
                     d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
                   />
                 </svg>
-                <p class="text-dark-500">Premium Meeting Space</p>
+                <p class="text-dark-500">Premium Consultation Space</p>
               </div>
             </div>
           {/if}
@@ -443,7 +459,7 @@
           </div>
           <div class="card text-center p-6">
             <div class="text-3xl font-bold text-primary-600 mb-1">4</div>
-            <div class="text-sm text-dark-500">Meeting Seats</div>
+            <div class="text-sm text-dark-500">Consultation Seats</div>
           </div>
           <div class="card text-center p-6">
             <div class="text-3xl font-bold text-primary-600 mb-1">5</div>

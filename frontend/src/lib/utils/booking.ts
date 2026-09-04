@@ -13,14 +13,14 @@ export function getStatusMeta(status: string): StatusMeta {
 	switch (status) {
 		case 'pending':
 			return { label: 'Pending', badgeClass: 'badge-yellow' };
-		case 'approved':
-			return { label: 'Approved', badgeClass: 'badge-blue' };
 		case 'paid':
 			return { label: 'Paid', badgeClass: 'badge-green' };
 		case 'completed':
 			return { label: 'Completed', badgeClass: 'badge-blue' };
 		case 'cancelled':
 			return { label: 'Cancelled', badgeClass: 'badge-red' };
+		case 'expired':
+			return { label: 'Expired', badgeClass: 'badge-red' };
 		default:
 			return { label: status.charAt(0).toUpperCase() + status.slice(1), badgeClass: 'badge-blue' };
 	}
