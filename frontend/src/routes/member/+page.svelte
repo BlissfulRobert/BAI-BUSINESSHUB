@@ -43,6 +43,17 @@
   let cancelGroup: MemberGroup | null = null;
   let cancelLoading = false;
 
+  // My Profile modal
+  let showProfileModal = false;
+  let profileLoading = false;
+  let profileMessage: { type: 'success' | 'error'; text: string } | null = null;
+  let pendingPhoneChange = '';
+  let pendingEmailChange = '';
+  let pendingPasswordChange = '';
+  let pendingPasswordConfirm = '';
+  let avatarFile: File | null = null;
+  $: avatarPreview = avatarFile ? URL.createObjectURL(avatarFile) : '';
+
   let selectedReportBookingId = '';
 
   async function postApi(path: string, payload: unknown): Promise<boolean> {
@@ -303,6 +314,134 @@ async function submitReschedule() {
 
   $: confMeter = membership?.is_active ? usageMeter(membership, membershipUsage, 'conference-room') : null;
   $: meetMeter = membership?.is_active ? usageMeter(membership, membershipUsage, 'consultation-room') : null;
+
+  // ----- My Profile handlers -----
+  $: myProfile = $profile ?? null;
+
+  function withProfileError(action: () => Promise<void>) {
+    profileLoading = true;
+    profileMessage = null;
+    action()
+      .catch((e: unknown) => {
+        console.error(e);
+        profileMessage = {
+          type: 'error',
+          text: (e as Error)?.message || 'Something went wrong. Please try again.'
+        };
+      })
+      .finally(() => {
+        profileLoading = false;
+      });
+  }
+
+  async function updatePhone() {
+    const phone = pendingPhoneChange.trim();
+    if (!phone || !myProfile) return;
+    await withProfileError(async () => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ phone })
+        .eq('id', myProfile.id);
+      if (error) throw new Error(error.message);
+      pendingPhoneChange = '';
+      profileMessage = { type: 'success', text: 'Phone number updated.' };
+      await refreshProfile();
+    });
+  }
+
+  async function updateEmail() {
+    const email = pendingEmailChange.trim();
+    if (!email || !myProfile) return;
+    await withProfileError(async () => {
+      const { data, error } = await supabase.auth.updateUser({ email });
+      if (error) throw new Error(error.message);
+      if (data?.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ email })
+          .eq('id', myProfile.id);
+        if (profileError) throw new Error(profileError.message);
+      }
+      pendingEmailChange = '';
+      profileMessage = {
+        type: 'success',
+        text: 'A confirmation email has been sent. Please verify the new address.'
+      };
+      await refreshProfile();
+    });
+  }
+
+  async function updatePassword() {
+    if (pendingPasswordChange.length < 6) {
+      profileMessage = { type: 'error', text: 'Password must be at least 6 characters.' };
+      return;
+    }
+    if (pendingPasswordChange !== pendingPasswordConfirm) {
+      profileMessage = { type: 'error', text: 'Passwords do not match.' };
+      return;
+    }
+    await withProfileError(async () => {
+      const { error } = await supabase.auth.updateUser({
+        password: pendingPasswordChange
+      });
+      if (error) throw new Error(error.message);
+      pendingPasswordChange = '';
+      pendingPasswordConfirm = '';
+      profileMessage = { type: 'success', text: 'Password changed successfully.' };
+    });
+  }
+
+  async function refreshProfile() {
+    if (!myProfile) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', myProfile.id)
+      .single();
+    if (data) {
+      profile.set(data);
+    }
+  }
+
+  function onAvatarChange(e: Event) {
+    avatarFile = (e.currentTarget as HTMLInputElement).files?.[0] || null;
+  }
+
+  async function uploadAvatar() {
+    if (!avatarFile || !myProfile) return;
+    await withProfileError(async () => {
+      const fileName = `${myProfile.id}-${Date.now()}-${avatarFile!.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, avatarFile!, { upsert: true });
+      if (uploadError) throw new Error(uploadError.message);
+
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: urlData.publicUrl })
+        .eq('id', myProfile.id);
+      if (updateError) throw new Error(updateError.message);
+
+      avatarFile = null;
+      profileMessage = { type: 'success', text: 'Profile picture updated.' };
+      await refreshProfile();
+    });
+  }
+
+  function closeProfileModal() {
+    showProfileModal = false;
+    profileMessage = null;
+    pendingPhoneChange = '';
+    pendingEmailChange = '';
+    pendingPasswordChange = '';
+    pendingPasswordConfirm = '';
+    avatarFile = null;
+  }
+  
 </script>
 
 <svelte:head>
@@ -315,9 +454,27 @@ async function submitReschedule() {
       <h1 class="text-3xl font-bold text-white">My Dashboard</h1>
       <p class="text-primary-100 mt-1">Manage your bookings, reviews, and reports</p>
     </div>
-    <button on:click={() => openReportModal()} class="text-sm self-start bg-white text-primary-700 hover:bg-primary-50 font-medium px-4 py-2 rounded-lg transition-colors duration-200">
-      Report Issue
-    </button>
+    <div class="flex items-center gap-2 self-start flex-wrap">
+      <button
+        on:click={() => (showProfileModal = true)}
+        class="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors duration-200"
+      >
+        {#if myProfile?.avatar_url}
+          <img
+            src={myProfile.avatar_url}
+            alt="Profile"
+            class="w-6 h-6 rounded-full object-cover ring-2 ring-gold-400"
+          />
+        {:else}
+          <span
+            class="w-6 h-6 rounded-full bg-gold-400 text-primary-900 font-bold text-xs flex items-center justify-center"
+          >
+            {(myProfile?.full_name || 'U')[0].toUpperCase()}
+          </span>
+        {/if}
+        My Profile
+      </button>
+    </div>
   </div>
 
   {#if membership?.is_active && !loading}
@@ -556,6 +713,13 @@ async function submitReschedule() {
                     </button>
                   {/if}
                 {/if}
+                <button
+                  on:click={() => openReportModal(rep)}
+                  class="btn-ghost-danger text-sm"
+                >
+                  <svg class="w-3.5 h-3.5 mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                  Report Issue
+                </button>
               </div>
             </div>
           </div>
@@ -787,6 +951,167 @@ async function submitReschedule() {
         <button type="submit" disabled={cancelLoading} class="btn-danger flex-1" on:click={submitCancel}>
           {cancelLoading ? 'Cancelling...' : 'Yes, Cancel'}
         </button>
+      </div>
+    </div>
+  {/if}
+</Modal>
+
+<!-- My Profile Modal -->
+<Modal
+  isOpen={showProfileModal}
+  title="My Profile"
+  on:close={closeProfileModal}
+>
+  {#if myProfile}
+    <div class="space-y-6">
+      {#if profileMessage}
+        <div
+          class="rounded-xl px-4 py-3 text-sm font-medium border {profileMessage.type === 'success'
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            : 'bg-red-50 text-red-700 border-red-200'}"
+        >
+          {profileMessage.text}
+        </div>
+      {/if}
+
+      <!-- Profile picture (circle) -->
+      <div class="flex flex-col items-center gap-3">
+        <div class="relative">
+          {#if avatarPreview}
+            <img
+              src={avatarPreview}
+              alt="Profile preview"
+              class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg"
+            />
+          {:else if myProfile.avatar_url}
+            <img
+              src={myProfile.avatar_url}
+              alt="Profile"
+              class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg"
+            />
+          {:else}
+            <div
+              class="w-24 h-24 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 ring-4 ring-primary-100 shadow-lg flex items-center justify-center"
+            >
+              <span class="text-3xl font-bold text-primary-700">
+                {(myProfile.full_name || 'U')[0].toUpperCase()}
+              </span>
+            </div>
+          {/if}
+        </div>
+        <p class="text-lg font-bold text-dark-900 tracking-tight">{myProfile.full_name}</p>
+        <div class="flex items-center gap-1.5">
+          <label
+            for="avatar-upload"
+            class="cursor-pointer text-xs font-semibold text-primary-700 hover:bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-200 transition-all"
+          >
+            Change Picture
+          </label>
+          <input
+            id="avatar-upload"
+            type="file"
+            accept="image/*"
+            class="sr-only"
+            on:change={onAvatarChange}
+          />
+          {#if avatarFile}
+            <button
+              on:click={uploadAvatar}
+              disabled={profileLoading}
+              class="text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg transition-all"
+            >
+              {profileLoading ? "Saving..." : "Save picture"}
+            </button>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Details table -->
+      <div class="overflow-hidden border border-dark-200/70 rounded-xl">
+        <!-- Email row -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-4 bg-dark-50/60 border-b border-dark-200/70">
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-semibold text-dark-900 uppercase tracking-wider mb-0.5">Email</p>
+            <p class="text-sm font-medium text-dark-800 truncate">{myProfile.email}</p>
+          </div>
+          <input
+            type="email"
+            bind:value={pendingEmailChange}
+            placeholder="New email"
+            class="input !py-1.5 text-xs sm:w-56"
+          />
+          <button
+            on:click={updateEmail}
+            disabled={profileLoading || !pendingEmailChange.trim()}
+            class="btn-primary text-xs !py-1.5 flex-shrink-0 disabled:opacity-50"
+          >Change Email</button>
+        </div>
+
+        <!-- Password row -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-4 bg-white border-b border-dark-200/70">
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-semibold text-dark-900 uppercase tracking-wider mb-0.5">Password</p>
+            <p class="text-sm font-medium text-dark-800">••••••••••</p>
+          </div>
+          <input
+            type="password"
+            bind:value={pendingPasswordChange}
+            placeholder="New password"
+            class="input !py-1.5 text-xs sm:w-40"
+          />
+          <input
+            type="password"
+            bind:value={pendingPasswordConfirm}
+            placeholder="Confirm"
+            class="input !py-1.5 text-xs sm:w-28"
+          />
+          <button
+            on:click={updatePassword}
+            disabled={profileLoading || !pendingPasswordChange}
+            class="btn-primary text-xs !py-1.5 flex-shrink-0 disabled:opacity-50"
+          >Change Password</button>
+        </div>
+
+        <!-- Phone row -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-4 bg-dark-50/60">
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-semibold text-dark-900 uppercase tracking-wider mb-0.5">Phone</p>
+            <p class="text-sm font-medium text-dark-800 truncate">{myProfile.phone || "Not set"}</p>
+          </div>
+          <input
+            type="tel"
+            bind:value={pendingPhoneChange}
+            placeholder="New phone number"
+            class="input !py-1.5 text-xs sm:w-56"
+          />
+          <button
+            on:click={updatePhone}
+            disabled={profileLoading || !pendingPhoneChange.trim()}
+            class="btn-primary text-xs !py-1.5 flex-shrink-0 disabled:opacity-50"
+          >Change Phone</button>
+        </div>
+      </div>
+
+      <!-- Missing details -->
+      <div class="bg-amber-50/60 border border-amber-200/60 rounded-xl p-4">
+        <p class="text-xs font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Details needed
+        </p>
+        <ul class="space-y-1.5">
+          {#if !myProfile.phone}
+            <li class="text-sm text-amber-800">Add your <span class="font-semibold">phone number</span> so we can reach you.</li>
+          {/if}
+          {#if !myProfile.avatar_url}
+            <li class="text-sm text-amber-800">Add a <span class="font-semibold">profile picture</span> to personalize your account.</li>
+          {/if}
+          {#if myProfile.phone && myProfile.avatar_url}
+            <li class="text-sm text-emerald-700 flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              All details are filled in. Great job!
+            </li>
+          {/if}
+        </ul>
       </div>
     </div>
   {/if}
