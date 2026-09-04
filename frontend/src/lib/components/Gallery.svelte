@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { GalleryImage } from '$lib/types/database';
+  import { safeKey } from '$lib/utils/keys';
 
   export let images: GalleryImage[] = [];
   export let selectedCategory: string = 'all';
@@ -54,7 +55,7 @@
   </div>
 
   <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-    {#each filteredImages as image, i (image.id)}
+    {#each filteredImages as image, i (safeKey(image.id, i))}
       <button
         on:click={() => openLightbox(i)}
         class="group aspect-square bg-dark-100 rounded-xl overflow-hidden border border-dark-200 hover:border-primary-600/50 transition-all duration-300 relative"

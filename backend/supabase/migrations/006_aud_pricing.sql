@@ -2,8 +2,8 @@
 -- as AUD values). Update live data idempotently; fresh setups apply the seed
 -- values first, so these are safe either way.
 --
---   Conference Room: hourly 50, half-day 200, full-day 350, weekly 1600, monthly 6400
---   Meeting Room:    hourly 30, half-day 120, full-day 200, weekly 960, monthly 3840
+--   Conference Room:     hourly 50, half-day 200, full-day 350, weekly 1600, monthly 6400
+--   Consultation Room:   hourly 30, half-day 120, full-day 200, weekly 960, monthly 3840
 --
 -- Note: Weekly/Monthly authoritative per-room prices live in the frontend
 -- pricing engine (lib/utils/pricing.ts RATE_CARDS). The plans.price values

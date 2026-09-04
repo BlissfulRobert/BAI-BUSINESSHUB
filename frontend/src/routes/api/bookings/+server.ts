@@ -7,7 +7,7 @@ import { sendMail, getAdminEmails } from '$lib/server/mail';
 import { sendBookingConfirmationEmail, schedulePaymentReminder } from '$lib/server/bookingEmails';
 import type { BookingChargeType, Membership } from '$lib/types/database';
 
-const BLOCKING_STATUSES = ['pending', 'approved', 'paid', 'completed'];
+const BLOCKING_STATUSES = ['pending', 'paid', 'completed'];
 // Membership included-hours only cover on-demand (hourly/period) bookings;
 // Weekly/Monthly passes are separate purchases. (See Room Rental Rate Structure.)
 const ON_DEMAND_PLAN_SLUGS = ['hourly', 'half-day', 'full-day'];
@@ -202,7 +202,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			.from('bookings')
 			.select('date, start_time, end_time, status, created_at, updated_at')
 			.eq('room_id', room_id)
-			.in('status', ['approved', 'paid', 'completed']);
+			.in('status', ['paid', 'completed']);
 
 		if (memberBookings && memberBookings.length > 0) {
 			for (const mb of memberBookings) {
@@ -236,11 +236,11 @@ export const POST: RequestHandler = async ({ request }) => {
 	let usageByPeriod: { period_start: string; period_end: string; minutes: number }[] = [];
 
 	if (isOnDemand && membership && room) {
-		const roomSlug = room.slug as 'conference-room' | 'meeting-room';
+		const roomSlug = room.slug as 'conference-room' | 'consultation-room';
 		const includedMinutes = Math.round(
 			(roomSlug === 'conference-room'
 				? membership.included_conference_hours
-				: membership.included_meeting_hours) * 60
+				: membership.included_consultation_hours) * 60
 		);
 
 		const monthStarts = [...new Set(dates.map((d: string) => monthStart(d)))];
@@ -358,7 +358,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		sendMail({
 			to: admins,
 			subject: `New booking submitted \u2014 ${bookingNumbersLabel}`,
-			text: `A new booking has been submitted for ${room?.name ?? 'a room'} on ${dateList} from ${start_time} to ${end_time} by ${guest_name} (${guest_email}). Booking reference: ${bookingNumbersLabel}. It is pending approval.`
+			text: `A new booking has been submitted for ${room?.name ?? 'a room'} on ${dateList} from ${start_time} to ${end_time} by ${guest_name} (${guest_email}). Booking reference: ${bookingNumbersLabel}. It is pending payment.`
 		});
 	}
 

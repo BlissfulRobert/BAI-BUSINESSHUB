@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import Modal from "$lib/components/Modal.svelte";
   import Calendar from "$lib/components/Calendar.svelte";
   import { supabase } from "$lib/supabase/client";
-  import { profile } from "$lib/stores/auth";
+  import { user, profile } from "$lib/stores/auth";
   import {
     CALENDAR_LOOKAHEAD_DAYS,
     HUB_CLOSE_HOUR,
@@ -21,7 +22,13 @@
   export let room: Room | null = null;
   export let plans: Plan[] = [];
 
-  const BLOCKING_STATUSES = ["pending", "approved", "paid", "completed"];
+  const BLOCKING_STATUSES = ["pending", "paid", "completed"];
+
+  // Draft persistence for guests: an unauthenticated user can build their full
+  // booking, then at "Confirm Booking" is routed through login/register. The
+  // draft is stashed in sessionStorage so it survives the navigation and can be
+  // restored (and the modal re-opened) when they return.
+  const DRAFT_KEY = "bai_booking_draft";
 
   let selectedPlan: Plan | null = null;
 
@@ -47,6 +54,20 @@
   // Multi-step wizard: 1 = plan & date, 2 = time & details, 3 = review & confirm.
   let step = 1;
 
+  // A signed-out browser session (guest). Guests may browse the wizard but are
+  // prompted to log in / register at the details step before continuing.
+  $: isGuest = !$user;
+
+  // Keep the readonly details fields in sync with the signed-in profile. This
+  // covers the case where a guest logs in/registers mid-booking: the saved
+  // draft's name/email/phone are empty, and $profile may not have loaded yet
+  // when the modal resumes, so we fill them reactively once the profile loads.
+  $: if ($user) {
+    if ($profile?.full_name) guestName = $profile.full_name;
+    if ($profile?.email) guestEmail = $profile.email;
+    if ($profile?.phone) guestPhone = $profile.phone;
+  }
+
   // Validity gates for moving forward — each step only needs what it shows,
   // so every step fits the viewport without scrolling.
   $: canContinue1 = !!selectedPlan && !!selectedDate;
@@ -70,7 +91,14 @@
   ].filter(Boolean);
 
   function nextStep() {
-    if (step < lastStep) step += 1;
+    if (step < lastStep) {
+      step += 1;
+      // Refresh availability on reaching the Confirm step so the user commits
+      // against the freshest snapshot — narrows the check-then-submit race.
+      if (step === 3 && room) {
+        loadBookings();
+      }
+    }
   }
 
   function prevStep() {
@@ -152,11 +180,28 @@
   }
 
   // Auto-fill the guest's details from their signed-in profile so they don't
-  // have to retype them. Runs every time the modal opens.
+  // have to retype them. Runs every time the modal opens. When a saved guest
+  // draft exists for this room, restore it instead so returning users pick up
+  // exactly where they left off.
+  function hasDraftForRoom(): boolean {
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (!raw) return false;
+      const draft = JSON.parse(raw);
+      return !!draft && draft.room_id === room?.id;
+    } catch {
+      return false;
+    }
+  }
+
   $: if (isOpen) {
-    if ($profile?.full_name) guestName = $profile.full_name;
-    if ($profile?.email) guestEmail = $profile.email;
-    if ($profile?.phone) guestPhone = $profile.phone;
+    if (hasDraftForRoom()) {
+      resumeDraftIfPresent();
+    } else {
+      if ($profile?.full_name) guestName = $profile.full_name;
+      if ($profile?.email) guestEmail = $profile.email;
+      if ($profile?.phone) guestPhone = $profile.phone;
+    }
 
     // Start the 15-minute pending payment timer
     bookingCreatedTime = new Date();
@@ -418,6 +463,77 @@
     step = 1;
   }
 
+  // Persist the current selection so a guest can resume it after login/register.
+  function saveDraft() {
+    try {
+      sessionStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          room_id: room?.id ?? null,
+          plan_id: selectedPlan?.id ?? null,
+          date: selectedDate,
+          start_time: startTime,
+          end_time: endTime,
+          guest_name: guestName,
+          guest_email: guestEmail,
+          guest_phone: guestPhone,
+          purpose,
+        }),
+      );
+    } catch {
+      // Ignore storage failures (e.g. private mode).
+    }
+  }
+
+  function clearDraft() {
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Ignore.
+    }
+  }
+
+  // Route a guest to login/register, saving their in-progress selection so the
+  // booking modal is restored (and pre-populated) when they finish auth.
+  function routeGuestToAuth(href: string) {
+    saveDraft();
+    goto(href);
+  }
+
+  // Restore a previously saved guest draft for this room and jump to the
+  // confirm step. Exposed so the page can call it after auth return.
+  export function resumeDraftIfPresent() {
+    if (!room) return;
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (!draft || draft.room_id !== room.id) return;
+
+      selectedPlan =
+        plans.find((p) => p.id === draft.plan_id) ??
+        (draft.plan_id ? null : selectedPlan);
+      selectedDate = draft.date ?? "";
+      startTime = draft.start_time ?? "";
+      endTime = draft.end_time ?? "";
+      purpose = draft.purpose ?? "";
+
+      // The guest's name/email/phone are intentionally NOT restored from the
+      // draft: for signed-in users they always come from the profile (the
+      // fields are read-only and filled reactively), and for guests they are
+      // empty anyway. Restoring empties here would clobber the profile values.
+
+      // Restored vs fresh detection for the page: leave the draft in place;
+      // it is cleared on a successful booking or when the modal closes.
+      if (draft && draft.plan_id && draft.date) {
+        step = 2;
+        loadBookings();
+      }
+    } catch {
+      // Ignore malformed drafts.
+    }
+  }
+
   async function submitBooking() {
     errorMessage = "";
 
@@ -461,6 +577,33 @@
       return;
     }
 
+    // Client-side re-check against the freshest available snapshot we have.
+    // The server re-validates too, but catching it here avoids relying on a
+    // possibly stale snapshot taken when the modal opened (another booking may
+    // have claimed this slot since). Abort early and send the user back to the
+    // time step so they can pick an open slot.
+    const startMin = timeToMinutes(startTime);
+    const endMin = timeToMinutes(endTime);
+    const stillFree = isSeriesPlan
+      ? !seriesDates.some((d) =>
+          (bookingsByDate[d] ?? []).some((b) =>
+            rangesOverlap(
+              startMin,
+              endMin,
+              timeToMinutes(b.start_time),
+              timeToMinutes(b.end_time),
+            ),
+          ),
+        )
+      : !isSlotBooked(startMin, endMin);
+    if (!stillFree) {
+      errorMessage =
+        "That time was just taken by another booking. Please pick another time.";
+      gotoStep(2);
+      loadBookings();
+      return;
+    }
+
     submitting = true;
 
     try {
@@ -471,7 +614,13 @@
       } = await supabase.auth.getSession();
 
       if (sessionError || !session?.access_token) {
-        errorMessage = "Please log in before booking a room.";
+        errorMessage = "";
+        submitting = false;
+        // Guest flow: save their in-progress selection and route them through
+        // auth. On return (returnTo=/#book) the page re-opens this modal and
+        // restores the draft so they can pick up exactly where they left off.
+        saveDraft();
+        goto(`/auth/login?returnTo=${encodeURIComponent("/#book")}`);
         return;
       }
 
@@ -502,6 +651,17 @@
       const result = await response.json();
 
       if (!response.ok) {
+        if (response.status === 409) {
+          // The slot was claimed between the client check and the server
+          // insert (race). Refresh availability so the now-taken slot renders
+          // as booked, and return the user to the time step to pick another.
+          errorMessage =
+            "That time just became unavailable — it was booked by someone else. Please pick another time.";
+          loadBookings();
+          gotoStep(2);
+          submitting = false;
+          return;
+        }
         throw new Error(result.message || "Unable to create booking.");
       }
 
@@ -512,6 +672,7 @@
       // Show a dedicated confirmation view instead of auto-closing so the
       // member can see exactly what was submitted and what happens next.
       errorMessage = "";
+      clearDraft();
       showConfirmation = true;
       step = 4;
     } catch (error) {
@@ -970,68 +1131,115 @@
         </div>
 
         <!-- Details -->
-        <div
-          class="space-y-4 rounded-xl border border-primary-100 bg-primary-50 p-5"
-        >
-          <h3 class="text-sm font-semibold text-dark-900">Your Details</h3>
+        <div class="rounded-xl border border-primary-100 bg-primary-50 p-5">
+          {#if isGuest}
+            <!-- Guest (not logged in): prompt to authenticate before details -->
+            <div class="flex flex-col items-center text-center">
+              <div
+                class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary-100"
+              >
+                <svg
+                  class="h-6 w-6 text-primary-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                  />
+                </svg>
+              </div>
+              <h3 class="text-sm font-semibold text-dark-900">
+                Log in or register to continue
+              </h3>
+              <p class="mt-1.5 text-sm text-dark-600">
+                Your selected room, plan, date and time will be saved. Once
+                logged in, your details will be filled in automatically and
+                you can finish your booking.
+              </p>
+              <div class="mt-4 flex w-full flex-col gap-2">
+                <button
+                  type="button"
+                  class="btn-primary w-full py-2.5"
+                  on:click={() => routeGuestToAuth("/auth/login?returnTo=" + encodeURIComponent("/#book"))}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg border border-primary-300 bg-white px-6 py-2.5 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+                  on:click={() => routeGuestToAuth("/auth/register?returnTo=" + encodeURIComponent("/#book"))}
+                >
+                  Register
+                </button>
+              </div>
+            </div>
+          {:else}
+            <div class="space-y-4">
+              <h3 class="text-sm font-semibold text-dark-900">Your Details</h3>
 
-          <div>
-            <label for="guest-name" class="mb-1.5 block text-xs text-dark-500"
-              >Full Name</label
-            >
-            <input
-              id="guest-name"
-              type="text"
-              bind:value={guestName}
-              placeholder="Enter your full name"
-              readonly
-              class="input disabled:cursor-not-allowed"
-            />
-            <p class="mt-1 text-xs text-dark-500">
-              Filled from your account profile.
-            </p>
-          </div>
+              <div>
+                <label for="guest-name" class="mb-1.5 block text-xs text-dark-500"
+                  >Full Name</label
+                >
+                <input
+                  id="guest-name"
+                  type="text"
+                  bind:value={guestName}
+                  placeholder="Enter your full name"
+                  readonly
+                  class="input disabled:cursor-not-allowed"
+                />
+                <p class="mt-1 text-xs text-dark-500">
+                  Filled from your account profile.
+                </p>
+              </div>
 
-          <div>
-            <label for="guest-email" class="mb-1.5 block text-xs text-dark-500"
-              >Email</label
-            >
-            <input
-              id="guest-email"
-              type="email"
-              bind:value={guestEmail}
-              placeholder="Enter your email"
-              readonly
-              class="input disabled:cursor-not-allowed"
-            />
-          </div>
+              <div>
+                <label for="guest-email" class="mb-1.5 block text-xs text-dark-500"
+                  >Email</label
+                >
+                <input
+                  id="guest-email"
+                  type="email"
+                  bind:value={guestEmail}
+                  placeholder="Enter your email"
+                  readonly
+                  class="input disabled:cursor-not-allowed"
+                />
+              </div>
 
-          <div>
-            <label for="guest-phone" class="mb-1.5 block text-xs text-dark-500"
-              >Phone</label
-            >
-            <input
-              id="guest-phone"
-              type="tel"
-              bind:value={guestPhone}
-              placeholder="Enter your phone number"
-              readonly
-              class="input disabled:cursor-not-allowed"
-            />
-          </div>
+              <div>
+                <label for="guest-phone" class="mb-1.5 block text-xs text-dark-500"
+                  >Phone</label
+                >
+                <input
+                  id="guest-phone"
+                  type="tel"
+                  bind:value={guestPhone}
+                  placeholder="Enter your phone number"
+                  readonly
+                  class="input disabled:cursor-not-allowed"
+                />
+              </div>
 
-          <div>
-            <label for="purpose" class="mb-1.5 block text-xs text-dark-500"
-              >Purpose</label
-            >
-            <textarea
-              id="purpose"
-              bind:value={purpose}
-              rows="3"
-              placeholder="What will you use the room for?"
-              class="input resize-none"
-            ></textarea>
-          </div>
+              <div>
+                <label for="purpose" class="mb-1.5 block text-xs text-dark-500"
+                  >Purpose</label
+                >
+                <textarea
+                  id="purpose"
+                  bind:value={purpose}
+                  rows="3"
+                  placeholder="What will you use the room for?"
+                  class="input resize-none"
+                ></textarea>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
 
@@ -1222,8 +1430,9 @@
           Booking request submitted
         </h3>
         <p class="mt-1 text-sm text-dark-600">
-          Your booking is now pending admin approval. You'll be notified once
-          it's approved.
+          Your booking is now pending payment. Once you pay, the room is
+          confirmed and your booking is approved. Please complete payment within
+          30 minutes or the booking will be released.
         </p>
         {#if bookingReference}
           <p class="mt-2 text-xs text-dark-500">

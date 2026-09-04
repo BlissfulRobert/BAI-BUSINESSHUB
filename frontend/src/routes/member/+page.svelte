@@ -8,6 +8,7 @@
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
   import { quoteForStoredBooking, usageMeter } from '$lib/utils/pricing';
   import { groupBookings, dateRangeLabel } from '$lib/utils/booking-groups';
+  import { safeKey, safeStringKey } from '$lib/utils/keys';
   import { isWeekend } from '$lib/utils/dates';
   import { isVictorianHoliday } from '$lib/utils/holidays';
   import Modal from '$lib/components/Modal.svelte';
@@ -313,7 +314,7 @@ async function submitReschedule() {
   ] as { key: 'upcoming' | 'past' | 'reviews' | 'reports'; label: string; count: number }[];
 
   $: confMeter = membership?.is_active ? usageMeter(membership, membershipUsage, 'conference-room') : null;
-  $: meetMeter = membership?.is_active ? usageMeter(membership, membershipUsage, 'meeting-room') : null;
+  $: meetMeter = membership?.is_active ? usageMeter(membership, membershipUsage, 'consultation-room') : null;
 
   // ----- My Profile handlers -----
   $: myProfile = $profile ?? null;
@@ -441,6 +442,7 @@ async function submitReschedule() {
     pendingPasswordConfirm = '';
     avatarFile = null;
   }
+  
 </script>
 
 <svelte:head>
@@ -484,7 +486,7 @@ async function submitReschedule() {
             <h2 class="text-lg font-semibold text-dark-900">My Membership</h2>
             <span class="badge-green">Active</span>
           </div>
-          <p class="text-xs text-dark-500">$99/month · 4 Conference Office hours + 4 Meeting Room hours per month · Included hours expire at month end, no rollover · 10% discount on additional hours · 48-hour priority booking window</p>
+          <p class="text-xs text-dark-500">$99/month · 4 Conference Office hours + 4 Consultation Room hours per month · Included hours expire at month end, no rollover · 10% discount on additional hours · 48-hour priority booking window</p>
         </div>
         </div>
       </div>
@@ -509,7 +511,7 @@ async function submitReschedule() {
         {#if meetMeter}
           <div class="bg-dark-50 border border-dark-200 rounded-xl p-4">
             <div class="flex items-center justify-between mb-1">
-              <p class="text-sm font-medium text-dark-900">Meeting Room</p>
+              <p class="text-sm font-medium text-dark-900">Consultation Room</p>
               <p class="text-xs text-dark-500">{meetMeter.remainingLabel} left</p>
             </div>
             <div class="h-2 bg-dark-200 rounded-full overflow-hidden">
@@ -576,7 +578,7 @@ async function submitReschedule() {
       </div>
     {:else}
       <div class="space-y-4">
-        {#each upcomingGroups as group (group.key)}
+        {#each upcomingGroups as group, gi (safeStringKey(group.key, gi))}
           {@const rep = group.bookings[0]}
           {@const statusMeta = getStatusMeta(group.status)}
           {#if group.isSeries}
@@ -601,7 +603,7 @@ async function submitReschedule() {
                   {/if}
                 </div>
                 <div class="flex items-center gap-2">
-                  {#if group.status === 'pending' || group.status === 'approved'}
+                  {#if group.status === 'pending'}
                     <button on:click={() => openRescheduleModal(group)} class="btn-ghost-primary">
                       Reschedule
                     </button>
@@ -616,7 +618,7 @@ async function submitReschedule() {
               <div class="mt-3">
                 <p class="text-xs text-dark-500 mb-1.5">Scheduled days</p>
                 <div class="flex flex-wrap gap-1.5">
-                  {#each group.dates as iso (iso)}
+                  {#each group.dates as iso, di (safeStringKey(iso, di))}
                     <span class="px-2 py-1 rounded-lg bg-dark-50 border border-dark-200 text-xs text-dark-700">
                       {formatDate(iso)}
                     </span>
@@ -640,7 +642,7 @@ async function submitReschedule() {
                   </p>
                 </div>
                 <div class="flex items-center gap-2">
-                  {#if group.status === 'pending' || group.status === 'approved'}
+                  {#if group.status === 'pending'}
                     <button on:click={() => openRescheduleModal(group)} class="btn-ghost-primary">
                       Reschedule
                     </button>
@@ -670,7 +672,7 @@ async function submitReschedule() {
       </div>
     {:else}
       <div class="space-y-4">
-        {#each pastGroups as group (group.key)}
+        {#each pastGroups as group, gi (safeStringKey(group.key, gi))}
           {@const rep = group.bookings[0]}
           {@const statusMeta = getStatusMeta(group.status)}
           {@const alreadyReviewed = rep.id ? reviewedBookingIds.has(rep.id) : false}
@@ -738,7 +740,7 @@ async function submitReschedule() {
       </div>
     {:else}
       <div class="space-y-4">
-        {#each reviews as review (review.id)}
+        {#each reviews as review, ri (safeKey(review.id, ri))}
           <div class="card">
             <div class="flex items-start gap-4">
               <div class="flex-shrink-0">
@@ -775,7 +777,7 @@ async function submitReschedule() {
       </div>
     {:else}
       <div class="space-y-4">
-        {#each reports as report (report.id)}
+        {#each reports as report, ri (safeKey(report.id, ri))}
           {@const reportMeta = getReportStatusMeta(report.status)}
           <div class="card">
             <div class="flex items-start justify-between gap-4">
@@ -847,7 +849,7 @@ async function submitReschedule() {
       </label>
       <select id="report-booking" bind:value={selectedReportBookingId} class="input">
         <option value="">Not related to a specific booking</option>
-        {#each reportableBookings as b (b.id)}
+        {#each reportableBookings as b, bi (safeKey(b.id, bi))}
           <option value={b.id}>{bookingOptionLabel(b)}</option>
         {/each}
       </select>
@@ -911,7 +913,7 @@ async function submitReschedule() {
         </p>
       {:else}
         <p class="text-xs text-dark-500">
-          This is a one-off booking. Rescheduling moves this booking to pending status for re-approval.
+          This is a one-off booking. Rescheduling moves this booking back to pending status for payment confirmation.
           24-hour notice required. First reschedule is free; second/late reschedule may incur a 10% fee based on the original booking value.
           Bookings can only be rescheduled within 30 days of the original date.
         </p>

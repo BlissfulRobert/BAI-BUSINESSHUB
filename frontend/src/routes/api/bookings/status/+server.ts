@@ -5,7 +5,7 @@ import { sendMail } from '$lib/server/mail';
 import { isWeekend, addDays, formatTimeLabel } from '$lib/utils/dates';
 import { isVictorianHoliday } from '$lib/utils/holidays';
 
-const ALLOWED_STATUSES = ['pending', 'approved', 'paid', 'completed', 'cancelled'];
+const ALLOWED_STATUSES = ['pending', 'paid', 'completed', 'cancelled', 'expired'];
 const PENDING_EXPIRY_MINUTES = 30;
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -129,8 +129,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	// Only admins may change the status of arbitrary bookings to approved/paid/
-	// completed; a member may only cancel (or reschedule, which stays pending).
+	// Only admins may change the status of arbitrary bookings to paid/completed;
+	// a member may only cancel (or reschedule, which stays pending).
 	const { data: requester } = await supabase
 		.from('profiles')
 		.select('role')
@@ -184,7 +184,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const roomName = booking.room?.name || 'a room';
 		const memberText = isReschedule
-			? `Your booking for ${roomName} has been rescheduled to ${body.date} (${body.start_time} - ${body.end_time}). It is pending re-approval.`
+			? `Your booking for ${roomName} has been rescheduled to ${body.date} (${body.start_time} - ${body.end_time}). It is pending payment.`
 			: booking.status === 'pending' && status === 'cancelled'
 				? `Your booking for ${roomName} on ${booking.date} has been cancelled.`
 				: `Your booking for ${roomName} on ${booking.date} (${booking.start_time} - ${booking.end_time}) is now ${status}.`;

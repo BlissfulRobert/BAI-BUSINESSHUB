@@ -106,7 +106,7 @@ Visit [http://localhost:5173](http://localhost:5173)
 | Room | Capacity | Price |
 |------|----------|-------|
 | Conference Room | 16 people | $75/hr |
-| Meeting Room | 8 people | $45/hr |
+| Consultation Room | 8 people | $45/hr |
 
 ## License
 

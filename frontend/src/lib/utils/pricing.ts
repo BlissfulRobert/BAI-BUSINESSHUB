@@ -5,8 +5,8 @@ import { timeToMinutes, toISODate } from '$lib/utils/dates';
  * Rental-period pricing per the Room Rental Rate Structure (figures mirrored
  * as AUD values). A 30-minute booking is charged at 50% of the hourly rate.
  *
- * Conference Room: hourly $/AU$50, half-day 200, full-day 350, weekly 1600, monthly 6400
- * Meeting Room:    hourly $/AU$30, half-day 120, full-day 200, weekly 960, monthly 3840
+ * Conference Room:     hourly $/AU$50, half-day 200, full-day 350, weekly 1600, monthly 6400
+ * Consultation Room:   hourly $/AU$30, half-day 120, full-day 200, weekly 960, monthly 3840
  *
  * Weekly/Monthly are per-room configured rates that undercut hourly pricing,
  * so they live in RATE_CARDS keyed by room slug rather than being derived
@@ -33,7 +33,7 @@ export interface RateCard {
 /** Flat per-room rates (AUD) keyed by room slug. */
 export const RATE_CARDS: Record<string, RateCard> = {
 	'conference-room': { halfDay: 200, fullDay: 350, weekly: 1600, monthly: 6400 },
-	'meeting-room': { halfDay: 120, fullDay: 200, weekly: 960, monthly: 3840 }
+	'consultation-room': { halfDay: 120, fullDay: 200, weekly: 960, monthly: 3840 }
 };
 
 export interface Quote {
@@ -182,7 +182,7 @@ export function quoteForStoredBooking(booking: Booking): Quote {
 export function includedHoursFor(membership: Membership, roomSlug: string): number {
 	return roomSlug === 'conference-room'
 		? membership.included_conference_hours
-		: membership.included_meeting_hours;
+		: membership.included_consultation_hours;
 }
 
 /** Minutes in a booking's time range. */
