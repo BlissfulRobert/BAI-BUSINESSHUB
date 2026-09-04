@@ -112,3 +112,33 @@ END $$;
 ALTER TABLE bookings
   ADD CONSTRAINT bookings_status_check
   CHECK (status IN ('pending', 'paid', 'completed', 'cancelled', 'expired'));
+
+-- ============================================
+-- 5) RACE-FREE BOOKING SLOTS (b-tree GIST exclusion)
+--    Airtight protection against the check-then-insert race in
+--    api/bookings/+server.ts: two overlapping bookings for the same room and
+--    date cannot BOTH be in a blocking state (pending/paid/completed). This
+--    makes the DB itself reject the second overlapping insert instead of
+--    relying on the (best-effort) server-side overlap query.
+-- ============================================
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'bookings_no_overlap_blocking'
+  ) THEN
+    -- The EXCLUDE is made partial (WHERE ...) so only blocking statuses are
+    -- mutually exclusive; cancelled/expired rows never hold a slot and may
+    -- overlap freely (e.g. a replacement booking on a released slot).
+    ALTER TABLE bookings
+      ADD CONSTRAINT bookings_no_overlap_blocking
+      EXCLUDE USING gist (
+        room_id WITH =,
+        date WITH =,
+        tsrange(date::timestamp + start_time, date::timestamp + end_time) WITH &&
+      )
+      WHERE (status IN ('pending', 'paid', 'completed'));
+  END IF;
+END $$;
