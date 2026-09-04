@@ -506,6 +506,16 @@
     await loadData();
   }
 
+  function guestInitialsFor(group: AdminBookingGroup): string {
+    const name = group.profile?.full_name || group.guest_name || "G";
+    return name
+      .split(" ")
+      .map((w) => w.charAt(0))
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  }
+
   // ----- My Profile handlers -----
   function clearProfileMessage() {
     profileMessage = null;
@@ -1233,11 +1243,11 @@
               {@const isCancelled = group.status === 'cancelled'}
               {@const stripColor = isApproved ? 'from-emerald-500 to-emerald-400' : isPending ? 'from-amber-500 to-amber-400' : isPaid ? 'from-blue-500 to-blue-400' : isCompleted ? 'from-primary-500 to-primary-400' : 'from-red-400 to-red-300'}
               {@const cardBg = isPending ? 'bg-amber-50/40' : isApproved ? 'bg-emerald-50/40' : isPaid ? 'bg-blue-50/40' : isCompleted ? 'bg-primary-50/40' : isCancelled ? 'bg-red-50/40' : ''}
-              {@const guestInitials = (group.profile?.full_name || group.guest_name || "G").split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
-
+              {@const guestInitials = guestInitialsFor(group)}
+              
               <div class="!p-0 overflow-hidden group rounded-xl border border-dark-200/60 shadow-sm bg-white {cardBg} {unseen ? 'ring-1 ring-red-200 shadow-md shadow-red-100/50' : 'hover:shadow-md hover:border-dark-300/60 transition-all duration-200'}">
                 <div class="flex">
-                  <!-- Left color strip -->
+                  <!-- Left color strip --> 
                   <div class="w-1.5 flex-shrink-0 bg-gradient-to-b {stripColor}"></div>
 
                   <div class="flex-1 p-5">
@@ -1433,8 +1443,12 @@
           {@const initials = member.full_name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
           <div class="card">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
-              <div class="w-11 h-11 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center flex-shrink-0">
-                <span class="text-sm font-bold text-primary-700">{initials}</span>
+              <div class="w-11 h-11 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {#if member.avatar_url}
+                  <img src={member.avatar_url} alt={member.full_name} class="w-full h-full object-cover" />
+                {:else}
+                  <span class="text-sm font-bold text-primary-700">{initials}</span>
+                {/if}
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1 flex-wrap">
