@@ -8,6 +8,7 @@
   import Map from "$lib/components/Map.svelte";
   import type { Room, Plan, GalleryImage, Review } from "$lib/types/database";
   import { getRoomImage } from "$lib/utils/format";
+  import { safeKey } from "$lib/utils/keys";
 
   let rooms: Room[] = [];
   let plans: Plan[] = [];
@@ -263,7 +264,7 @@
       </div>
     {:else}
       <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {#each rooms as room (room.id)}
+        {#each rooms as room, ri (safeKey(room.id, ri))}
           <RoomCard {room} on:book={(event) => openBooking(event.detail)} />
         {/each}
       </div>
@@ -301,7 +302,7 @@
       <div>
         {#if !loading && plans.length > 0}
           <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {#each plans as plan, i (plan.id)}
+            {#each plans as plan, i (safeKey(plan.id, i))}
               <PlanCard {plan} {rooms} selected={i === 1} />
             {/each}
           </div>

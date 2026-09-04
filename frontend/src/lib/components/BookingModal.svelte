@@ -91,7 +91,14 @@
   ].filter(Boolean);
 
   function nextStep() {
-    if (step < lastStep) step += 1;
+    if (step < lastStep) {
+      step += 1;
+      // Refresh availability on reaching the Confirm step so the user commits
+      // against the freshest snapshot — narrows the check-then-submit race.
+      if (step === 3 && room) {
+        loadBookings();
+      }
+    }
   }
 
   function prevStep() {
@@ -570,6 +577,33 @@
       return;
     }
 
+    // Client-side re-check against the freshest available snapshot we have.
+    // The server re-validates too, but catching it here avoids relying on a
+    // possibly stale snapshot taken when the modal opened (another booking may
+    // have claimed this slot since). Abort early and send the user back to the
+    // time step so they can pick an open slot.
+    const startMin = timeToMinutes(startTime);
+    const endMin = timeToMinutes(endTime);
+    const stillFree = isSeriesPlan
+      ? !seriesDates.some((d) =>
+          (bookingsByDate[d] ?? []).some((b) =>
+            rangesOverlap(
+              startMin,
+              endMin,
+              timeToMinutes(b.start_time),
+              timeToMinutes(b.end_time),
+            ),
+          ),
+        )
+      : !isSlotBooked(startMin, endMin);
+    if (!stillFree) {
+      errorMessage =
+        "That time was just taken by another booking. Please pick another time.";
+      gotoStep(2);
+      loadBookings();
+      return;
+    }
+
     submitting = true;
 
     try {
@@ -617,6 +651,17 @@
       const result = await response.json();
 
       if (!response.ok) {
+        if (response.status === 409) {
+          // The slot was claimed between the client check and the server
+          // insert (race). Refresh availability so the now-taken slot renders
+          // as booked, and return the user to the time step to pick another.
+          errorMessage =
+            "That time just became unavailable — it was booked by someone else. Please pick another time.";
+          loadBookings();
+          gotoStep(2);
+          submitting = false;
+          return;
+        }
         throw new Error(result.message || "Unable to create booking.");
       }
 

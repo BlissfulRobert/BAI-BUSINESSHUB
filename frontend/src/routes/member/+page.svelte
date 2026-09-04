@@ -8,6 +8,7 @@
   import { getStatusMeta, getReportStatusMeta } from '$lib/utils/booking';
   import { quoteForStoredBooking, usageMeter } from '$lib/utils/pricing';
   import { groupBookings, dateRangeLabel } from '$lib/utils/booking-groups';
+  import { safeKey, safeStringKey } from '$lib/utils/keys';
   import { isWeekend } from '$lib/utils/dates';
   import { isVictorianHoliday } from '$lib/utils/holidays';
   import Modal from '$lib/components/Modal.svelte';
@@ -577,7 +578,7 @@ async function submitReschedule() {
       </div>
     {:else}
       <div class="space-y-4">
-        {#each upcomingGroups as group (group.key)}
+        {#each upcomingGroups as group, gi (safeStringKey(group.key, gi))}
           {@const rep = group.bookings[0]}
           {@const statusMeta = getStatusMeta(group.status)}
           {#if group.isSeries}
@@ -617,7 +618,7 @@ async function submitReschedule() {
               <div class="mt-3">
                 <p class="text-xs text-dark-500 mb-1.5">Scheduled days</p>
                 <div class="flex flex-wrap gap-1.5">
-                  {#each group.dates as iso (iso)}
+                  {#each group.dates as iso, di (safeStringKey(iso, di))}
                     <span class="px-2 py-1 rounded-lg bg-dark-50 border border-dark-200 text-xs text-dark-700">
                       {formatDate(iso)}
                     </span>
@@ -671,7 +672,7 @@ async function submitReschedule() {
       </div>
     {:else}
       <div class="space-y-4">
-        {#each pastGroups as group (group.key)}
+        {#each pastGroups as group, gi (safeStringKey(group.key, gi))}
           {@const rep = group.bookings[0]}
           {@const statusMeta = getStatusMeta(group.status)}
           {@const alreadyReviewed = rep.id ? reviewedBookingIds.has(rep.id) : false}
@@ -739,7 +740,7 @@ async function submitReschedule() {
       </div>
     {:else}
       <div class="space-y-4">
-        {#each reviews as review (review.id)}
+        {#each reviews as review, ri (safeKey(review.id, ri))}
           <div class="card">
             <div class="flex items-start gap-4">
               <div class="flex-shrink-0">
@@ -776,7 +777,7 @@ async function submitReschedule() {
       </div>
     {:else}
       <div class="space-y-4">
-        {#each reports as report (report.id)}
+        {#each reports as report, ri (safeKey(report.id, ri))}
           {@const reportMeta = getReportStatusMeta(report.status)}
           <div class="card">
             <div class="flex items-start justify-between gap-4">
@@ -848,7 +849,7 @@ async function submitReschedule() {
       </label>
       <select id="report-booking" bind:value={selectedReportBookingId} class="input">
         <option value="">Not related to a specific booking</option>
-        {#each reportableBookings as b (b.id)}
+        {#each reportableBookings as b, bi (safeKey(b.id, bi))}
           <option value={b.id}>{bookingOptionLabel(b)}</option>
         {/each}
       </select>

@@ -26,6 +26,7 @@
     formatMinutes,
   } from "$lib/utils/pricing";
   import { groupBookings, dateRangeLabel } from "$lib/utils/booking-groups";
+  import { safeKey, safeStringKey } from "$lib/utils/keys";
   import Modal from "$lib/components/Modal.svelte";
 
   let bookings: Booking[] = [];
@@ -810,7 +811,7 @@
             viewBox="0 0 24 24"
           >
             <path
-              strok8e-linecap="round"
+              stroke-linecap="round"
               stroke-linejoin="round"
               stroke-width="2"
               d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
@@ -959,7 +960,7 @@
           </button>
         </div>
         <div class="space-y-0">
-          {#each bookings.slice(0, 6) as booking (booking.id)}
+          {#each bookings.slice(0, 6) as booking, bi (safeKey(booking.id, bi))}
             {@const statusMeta = getStatusMeta(booking.status)}
             <div
               class="flex items-center gap-3 py-2.5 border-b border-dark-100/80 last:border-0 group"
@@ -1213,7 +1214,7 @@
         return [...map.entries()].sort((a, b) => sortOrder === "newest" ? b[0].localeCompare(a[0]) : a[0].localeCompare(b[0]));
       })()}
 
-      {#each groupedByDate as [date, groups], gi (date)}
+      {#each groupedByDate as [date, groups], gi (safeStringKey(date, gi))}
         <div class="mb-6">
           <!-- Date header -->
           <div class="flex items-center gap-3 mb-3 px-1">
@@ -1229,7 +1230,7 @@
 
           <!-- Cards for this date -->
           <div class="space-y-3">
-            {#each groups as group (group.key)}
+            {#each groups as group, gci (safeStringKey(group.key, gci))}
               {@const statusMeta = getStatusMeta(group.status)}
               {@const unseen = hasUnseenBookings(group)}
               {@const isPending = group.status === 'pending'}
@@ -1364,7 +1365,7 @@
       </div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {#each rooms as room (room.id)}
+      {#each rooms as room, ri (safeKey(room.id, ri))}
         <div class="card !p-0 overflow-hidden group">
           <div class="h-40 bg-dark-100 overflow-hidden relative">
             <img src={getRoomImage(room.name)} alt={room.name} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -1427,7 +1428,7 @@
       </div>
     {:else}
       <div class="space-y-3">
-        {#each filteredMembers as member (member.id)}
+        {#each filteredMembers as member, mi (safeKey(member.id, mi))}
           {@const mem = membershipFor(member.id)}
           {@const initials = member.full_name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
           <div class="card">
@@ -1537,7 +1538,7 @@
       </div>
     {:else}
       <div class="space-y-3">
-        {#each filteredReports as report (report.id)}
+        {#each filteredReports as report, ri (safeKey(report.id, ri))}
           {@const reportMeta = getReportStatusMeta(report.status)}
           <div class="card {report.is_seen ? '' : 'ring-1 ring-red-200 shadow-md shadow-red-100/50'}">
             <div class="flex gap-4">
@@ -1621,7 +1622,7 @@
       </div>
     {:else}
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {#each galleryImages as image (image.id)}
+        {#each galleryImages as image, ii (safeKey(image.id, ii))}
           <div class="card !p-0 overflow-hidden group relative">
             <div class="aspect-square overflow-hidden bg-dark-100 relative">
               <img src={image.image_url} alt={image.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
