@@ -294,7 +294,7 @@
     key: string;
     room?: Room;
     plan?: Plan;
-    profile?: { full_name: string; email: string };
+    profile?: { full_name: string; email: string; avatar_url?: string | null };
     guest_name: string;
     guest_email: string;
     start_time: string;
@@ -964,9 +964,15 @@
             <div
               class="flex items-center gap-3 py-2.5 border-b border-dark-100/80 last:border-0 group"
             >
-              <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center flex-shrink-0">
-                <span class="text-xs font-bold text-primary-700">{(booking.profile?.full_name || booking.guest_name || '?')[0].toUpperCase()}</span>
-              </div>
+              {#if booking.profile?.avatar_url}
+                <div class="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                  <img src={booking.profile.avatar_url} alt="Profile" class="w-full h-full object-cover" />
+                </div>
+              {:else}
+                <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center flex-shrink-0">
+                  <span class="text-xs font-bold text-primary-700">{(booking.profile?.full_name || booking.guest_name || '?')[0].toUpperCase()}</span>
+                </div>
+              {/if}
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-semibold text-dark-800 truncate">
                   {booking.profile?.full_name || booking.guest_name}
@@ -1020,9 +1026,15 @@
                 <div
                   class="flex items-center gap-3 py-2.5 border-b border-dark-100/80 last:border-0"
                 >
-                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center flex-shrink-0">
-                    <span class="text-xs font-bold text-amber-700">{member.full_name[0].toUpperCase()}</span>
-                  </div>
+                  {#if member.avatar_url}
+                    <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+                      <img src={member.avatar_url} alt="Profile" class="w-full h-full object-cover" />
+                    </div>
+                  {:else}
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center flex-shrink-0">
+                      <span class="text-xs font-bold text-amber-700">{member.full_name[0].toUpperCase()}</span>
+                    </div>
+                  {/if}
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-dark-800 truncate">{member.full_name}</p>
                     <p class="text-xs text-dark-900 truncate">{member.email}</p>
@@ -1279,9 +1291,15 @@
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                           <!-- Guest -->
                           <div class="flex items-center gap-2 text-sm">
-                            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
-                              <span class="text-[10px] font-bold text-white">{guestInitials}</span>
-                            </div>
+                            {#if group.profile?.avatar_url}
+                              <div class="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
+                                <img src={group.profile.avatar_url} alt="Profile" class="w-full h-full object-cover" />
+                              </div>
+                            {:else}
+                              <div class="w-7 h-7 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                                <span class="text-[10px] font-bold text-white">{guestInitials}</span>
+                              </div>
+                            {/if}
                             <div class="min-w-0">
                               <p class="font-semibold text-dark-800 truncate">{group.profile?.full_name || group.guest_name}</p>
                               <p class="text-xs text-dark-900 truncate">{group.guest_email}</p>
