@@ -563,6 +563,11 @@ async function submitReschedule() {
     {/each}
   </div>
 
+  <p class="-mt-4 mb-6 text-xs text-dark-400">
+    Time slots are first come, first served. Pending slots are released after
+    30 minutes without payment, so they can be claimed again.
+  </p>
+
   {#if loading}
     <div class="space-y-4">
       {#each [1, 2, 3] as _}

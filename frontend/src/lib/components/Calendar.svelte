@@ -119,7 +119,8 @@
 				aria-pressed={selectedDate === day.iso}
 				class="relative aspect-square rounded-lg text-sm transition
 					{!day.isCurrentMonth ? 'text-dark-300' : ''}
-					{disabled && day.isCurrentMonth ? 'cursor-not-allowed text-dark-300' : ''}
+					{disabled && day.isCurrentMonth && !isHoliday ? 'cursor-not-allowed text-dark-300' : ''}
+					{isHoliday && day.isCurrentMonth ? '!bg-blue-50 !text-blue-500' : ''}
 					{!disabled && day.isCurrentMonth && !isRangeStart && !isRangeEnd && !isRangeInterior
 						? 'text-dark-700 hover:bg-dark-100'
 						: ''}
@@ -130,7 +131,7 @@
 			{day.dayOfMonth}
 			{#if isHoliday && day.isCurrentMonth}
 				<span
-					class="absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-gold-500"
+					class="absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-blue-500"
 					title="Public holiday"
 				></span>
 			{:else if day.isCurrentMonth && !day.isPast && day.availability !== 'free'}
@@ -148,7 +149,11 @@
 	<div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dark-500">
 		<span class="flex items-center gap-1">
 			<span class="inline-block h-3 w-3 rounded border border-dark-200 bg-dark-100"></span>
-			Closed (weekend / public holiday)
+			Weekend (closed)
+		</span>
+		<span class="flex items-center gap-1">
+			<span class="inline-block h-3 w-3 rounded border border-blue-200 bg-blue-50"></span>
+			Public holiday (closed)
 		</span>
 		<span class="flex items-center gap-1">
 			<span class="h-1.5 w-1.5 rounded-full bg-red-500"></span>

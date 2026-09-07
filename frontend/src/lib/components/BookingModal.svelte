@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { goto } from "$app/navigation";
   import Modal from "$lib/components/Modal.svelte";
   import Calendar from "$lib/components/Calendar.svelte";
@@ -93,22 +94,31 @@
   function nextStep() {
     if (step < lastStep) {
       step += 1;
-      // Refresh availability on reaching the Confirm step so the user commits
-      // against the freshest snapshot — narrows the check-then-submit race.
-      if (step === 3 && room) {
+      // Refresh availability on reaching the time picker (so grey-outs are
+      // current the moment it's shown) and the Confirm step (so the user
+      // commits against the freshest snapshot).
+      if ((step === 2 || step === 3) && room) {
         loadBookings();
       }
     }
   }
 
   function prevStep() {
-    if (step > 1) step -= 1;
+    if (step > 1) {
+      step -= 1;
+      // Freshen the picker when coming back to it (e.g. from Confirm).
+      if (step === 2 && room) loadBookings();
+    }
   }
 
   function gotoStep(target: number) {
     // Only allow revisiting steps that have already been reached.
-    if (target < step) step = target;
-    else if (target === step + 1 && target <= lastStep) step = target;
+    if (target < step) {
+      step = target;
+      if (target === 2 && room) loadBookings();
+    } else if (target === step + 1 && target <= lastStep) {
+      step = target;
+    }
   }
 
   const stepTitles = ["Plan & Date", "Time & Details", "Confirm"];
@@ -136,13 +146,14 @@
         : getSeriesDates(selectedDate, selectedPlan)
       : [];
 
-  // Available 1-hour blocks for the selected (start) date — used for the
-  // calendar "teaser" preview. Independent of plan duration on purpose.
-  $: availableHourSlots = selectedDate
-    ? (buildTimeSlots(1, bookingsByDate[selectedDate] ?? []).filter(
-        (s) => s.available,
-      ) ?? [])
+  // All 1-hour blocks for the selected (start) date plus whether each one is
+  // free, so step 1 can show the full timeline with booked hours greyed out.
+  // Independent of plan duration on purpose.
+  $: allHourSlots = selectedDate
+    ? (buildTimeSlots(1, bookingsByDate[selectedDate] ?? []) ?? [])
     : [];
+  // Free blocks only — used for the "X hours free" chip on step 1.
+  $: availableHourSlots = allHourSlots.filter((s) => s.available);
   $: selectedDayFreeCount = selectedDate
     ? getFreeHourCount(bookingsByDate[selectedDate] ?? [])
     : 0;
@@ -174,9 +185,68 @@
     }, {});
   }
 
-  // (Re)load availability whenever the modal opens or the selected room changes.
+  // ---- Live availability sync ---------------------------------------------
+  // While the modal is open we keep hot availability fresh two ways:
+  // 1. Supabase Realtime pushes on new/updated/cancelled bookings for this
+  //    room (instant), and
+  // 2. a 15-second poll as a reliable fallback (works even if realtime isn't
+  //    enabled on the DB or a push is delivered to a stale snapshot).
+  // Both funnel into loadBookings(), so every view (calendar dots, step-1
+  // hour chips, step-2 greyed-out times) updates together.
+  const AVAILABILITY_REFRESH_MS = 15000;
+
+  let availabilityTimer: ReturnType<typeof setInterval> | null = null;
+  let availabilityChannel: ReturnType<typeof supabase.channel> | null = null;
+
+  // Full refetch on any realtime change beats hand-merging events: a status
+  // flip to cancelled/expired must remove the row, an update may shift its
+  // time, and a fresh query is always authoritative.
+  function onAvailabilityChange() {
+    loadBookings();
+  }
+
+  function startAvailabilitySync() {
+    if (!room || !isOpen) return;
+
+    // Polling — restart any existing interval so re-entry doesn't stack ticks.
+    if (availabilityTimer) clearInterval(availabilityTimer);
+    availabilityTimer = setInterval(onAvailabilityChange, AVAILABILITY_REFRESH_MS);
+
+    // Realtime — named per room so reopening the modal reuses/replaces cleanly.
+    if (availabilityChannel) void availabilityChannel.unsubscribe();
+    availabilityChannel = supabase
+      .channel(`room-availability-${room.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+          filter: `room_id=eq.${room.id}`,
+        },
+        onAvailabilityChange,
+      )
+      .subscribe();
+  }
+
+  function stopAvailabilitySync() {
+    if (availabilityTimer) {
+      clearInterval(availabilityTimer);
+      availabilityTimer = null;
+    }
+    if (availabilityChannel) {
+      void availabilityChannel.unsubscribe();
+      availabilityChannel = null;
+    }
+  }
+
+  onDestroy(stopAvailabilitySync);
+
+  // (Re)load availability whenever the modal opens or the selected room changes,
+  // and keep it live via polling + realtime.
   $: if (isOpen && room) {
     loadBookings();
+    startAvailabilitySync();
   }
 
   // Auto-fill the guest's details from their signed-in profile so they don't
@@ -208,13 +278,14 @@
     pendingMinutesRemaining = 30;
     startPendingTimer();
   } else {
-    // Clear the timer when modal closes
+    // Clear the timer when modal closes, and stop the availability sync.
     if (pendingTimerInterval) {
       clearInterval(pendingTimerInterval);
       pendingTimerInterval = null;
     }
     pendingMinutesRemaining = 0;
     bookingCreatedTime = null;
+    stopAvailabilitySync();
   }
 
   // Business hours come from the shared availability engine so the modal's
@@ -338,6 +409,17 @@
     );
     // A slot is unavailable if it conflicts on any checked day.
     return conflictingDays.length > 0;
+  }
+
+  // Human-readable message when the picked slot was just claimed by another
+  // guest (client-side re-check or a 409 from the server). Names the exact
+  // date(s)/time so the warning is unambiguous.
+  function slotConflictMessage(): string {
+    const window = `${formatDisplayTime(startTime)}\u2013${formatDisplayTime(endTime)}`;
+    if (isSeriesPlan && seriesDates.length > 1) {
+      return `The time you picked (${formatDate(seriesDates[0])} \u2192 ${formatDate(seriesDates[seriesDates.length - 1])}, ${window}) was just claimed by another booking on one of the days in your range. Slots are first come, first served \u2014 please pick another time.`;
+    }
+    return `The time you picked (${formatDate(selectedDate)}, ${window}) was just booked by someone else. Slots are first come, first served \u2014 please pick another time.`;
   }
 
   // Start times that are fully booked (that exact starting hour is unavailable).
@@ -597,8 +679,7 @@
         )
       : !isSlotBooked(startMin, endMin);
     if (!stillFree) {
-      errorMessage =
-        "That time was just taken by another booking. Please pick another time.";
+      errorMessage = slotConflictMessage();
       gotoStep(2);
       loadBookings();
       return;
@@ -655,8 +736,7 @@
           // The slot was claimed between the client check and the server
           // insert (race). Refresh availability so the now-taken slot renders
           // as booked, and return the user to the time step to pick another.
-          errorMessage =
-            "That time just became unavailable — it was booked by someone else. Please pick another time.";
+          errorMessage = slotConflictMessage();
           loadBookings();
           gotoStep(2);
           submitting = false;
@@ -795,6 +875,18 @@
       </div>
     {/if}
 
+    <!-- Error/warning banner — rendered on every step so conflict messages
+         remain visible after bouncing the user back to the time picker. -->
+    {#if errorMessage}
+      <div
+        class="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        role="alert"
+      >
+        <span aria-hidden="true" class="mt-0.5">!</span>
+        <span>{errorMessage}</span>
+      </div>
+    {/if}
+
     <!-- STEP 1: Plan & Date -->
     {#if step === 1}
       <div class="grid gap-8 sm:grid-cols-2">
@@ -855,7 +947,12 @@
             {selectedDate}
             rangeDates={isSeriesPlan ? seriesDates : []}
             lookaheadDays={CALENDAR_LOOKAHEAD_DAYS}
-            on:selectDate={(e) => (selectedDate = e.detail)}
+            on:selectDate={(e) => {
+              selectedDate = e.detail;
+              // Freshen the preview/count the moment a day is picked so it
+              // reflects any booking made since the last refresh.
+              loadBookings();
+            }}
           />
 
           {#if selectedDate}
@@ -881,17 +978,23 @@
                   </span>
                 {/if}
               </div>
-              {#if availableHourSlots.length > 0}
+              {#if allHourSlots.length > 0}
                 <div class="flex flex-wrap gap-1.5">
-                  {#each availableHourSlots as slot}
+                  {#each allHourSlots as slot}
                     <span
-                      class="rounded-md border border-primary-200 bg-white px-2 py-1 text-xs font-medium text-primary-800"
+                      class="rounded-md border px-2 py-1 text-xs font-medium {slot.available
+                        ? "border-primary-200 bg-white text-primary-800"
+                        : "border-dark-200 bg-dark-50 text-dark-300 line-through"}"
+                      title={slot.available
+                        ? "Available"
+                        : "Already booked"}
                     >
                       {slot.label}
                     </span>
                   {/each}
                 </div>
-              {:else}
+              {/if}
+              {#if availableHourSlots.length === 0}
                 <p class="text-xs text-dark-500">
                   No 1-hour blocks available on this day.
                 </p>
@@ -901,6 +1004,13 @@
                   ? "Preview shows the start date. The time you pick must be free across all days in the range."
                   : "This is just a preview — pick your exact time on the next step."}
               </p>
+              <div
+                class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"
+              >
+                Free hours are shown for guidance only — bookings are first come,
+                first served. If another guest confirms this time before you do,
+                it's no longer available.
+              </div>
             </div>
           {/if}
 
@@ -987,7 +1097,12 @@
                     id="start-time"
                     type="button"
                     class="input flex w-full items-center justify-between text-left disabled:cursor-not-allowed disabled:opacity-50"
-                    on:click={() => (startOpen = !startOpen)}
+                    on:click={() => {
+                      startOpen = !startOpen;
+                      // Refresh the moment the picker opens so booked rows
+                      // are greyed out against the freshest data.
+                      if (startOpen) loadBookings();
+                    }}
                   >
                     <span
                       >{startTime
@@ -1014,7 +1129,7 @@
                         {@const booked = bookedStarts.has(value)}
                         <button
                           type="button"
-                          class="block w-full px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:text-dark-400 disabled:hover:bg-transparent enabled:hover:bg-dark-50"
+                          class="block w-full px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:bg-dark-100/70 disabled:text-dark-300 disabled:line-through disabled:hover:bg-transparent enabled:hover:bg-dark-50"
                           class:bg-primary-50={value === startTime}
                           disabled={booked}
                           on:click={() => selectStartTime(value)}
@@ -1045,7 +1160,11 @@
                     type="button"
                     class="input flex w-full items-center justify-between text-left disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!startTime}
-                    on:click={() => (endOpen = !endOpen)}
+                    on:click={() => {
+                      endOpen = !endOpen;
+                      // Same as start: freshen before showing available ends.
+                      if (endOpen) loadBookings();
+                    }}
                   >
                     <span
                       >{endTime
@@ -1071,7 +1190,7 @@
                       {#each availableEndTimes as { time, endValue, booked, hint }}
                         <button
                           type="button"
-                          class="block w-full px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:text-dark-400 disabled:hover:bg-transparent enabled:hover:bg-dark-50"
+                          class="block w-full px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:bg-dark-100/70 disabled:text-dark-300 disabled:line-through disabled:hover:bg-transparent enabled:hover:bg-dark-50"
                           class:bg-primary-50={endValue === endTime}
                           disabled={booked}
                           on:click={() => selectEndTime(endValue)}
@@ -1124,8 +1243,14 @@
           {#if !fixedTimePlan}
             <p class="mt-4 text-xs text-dark-500">
               Greyed-out times marked
-              <span class="font-medium text-red-600">(Booked)</span> are already
-              taken and can't be selected.
+              <span class="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">(Booked)</span> are already
+              taken and can't be selected. Bookings are first come, first served —
+              a free-looking time can be claimed by another guest at any moment,
+              so availability may change before you confirm.
+            </p>
+            <p class="mt-1 text-[11px] text-dark-400">
+              Availability refreshes automatically — new bookings appear here in
+              real time.
             </p>
           {/if}
         </div>
@@ -1357,14 +1482,6 @@
         </div>
       </div>
 
-      {#if errorMessage}
-        <div
-          class="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
-        >
-          {errorMessage}
-        </div>
-      {/if}
-
       <div class="mt-6 flex items-center justify-between">
         <button
           type="button"
@@ -1392,6 +1509,10 @@
           ? `${seriesDates.length} days`
           : "slot"} pending payment. Payment must be completed within 30 minutes
         or the booking will automatically expire and the room/time slot will be released.
+      </p>
+      <p class="mt-1 text-center text-xs text-dark-400">
+        If someone else books this same time before you confirm, you'll be
+        returned to the time step with a warning and can pick another slot.
       </p>
       <div class="mt-2 text-center text-xs text-dark-500">
         Available hours: 9:00 AM – 7:00 PM Mon–Fri
@@ -1433,6 +1554,10 @@
           Your booking is now pending payment. Once you pay, the room is
           confirmed and your booking is approved. Please complete payment within
           30 minutes or the booking will be released.
+        </p>
+        <p class="mt-2 text-sm font-medium text-primary-700">
+          This slot is now held for you while it's pending — no one else can
+          book it.
         </p>
         {#if bookingReference}
           <p class="mt-2 text-xs text-dark-500">

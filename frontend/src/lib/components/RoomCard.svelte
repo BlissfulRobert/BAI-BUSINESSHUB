@@ -88,5 +88,9 @@
   >
       Book Now
     </span>
+    <span class="mt-1.5 block text-center text-xs text-dark-400">
+      First come, first served — free slots can be claimed by other guests at
+      any time.
+    </span>
   </div>
 </div>
