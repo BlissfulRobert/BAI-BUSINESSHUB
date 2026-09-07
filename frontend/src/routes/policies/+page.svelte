@@ -86,6 +86,7 @@
 			title: 'Booking & payment',
 			items: [
 				'A booking is only confirmed once payment is completed successfully.',
+				'Slots are booked first come, first served \u2014 if two guests try to book the same time, the first to confirm keeps it and the other is notified.',
 				"If payment isn't completed within 30 minutes, the booking is cancelled automatically and the slot becomes available again.",
 				'A reminder to finish payment appears about 2\u20135 minutes after a booking is started.',
 				'Once payment succeeds, a confirmation email is sent with the booking reference, room, date, time, duration, amount paid, and relevant policies.',
