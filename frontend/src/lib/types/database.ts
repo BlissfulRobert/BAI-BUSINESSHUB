@@ -55,7 +55,7 @@ export interface Booking {
 	// Relations populated by Supabase joins (e.g. `*, room:rooms(*), plan:plans(*), profile:profiles(*)`).
 	room?: Room;
 	plan?: Plan;
-	profile?: { full_name: string; email: string };
+	profile?: { full_name: string; email: string; avatar_url?: string | null };
 }
 
 export interface Profile {

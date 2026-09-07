@@ -203,9 +203,9 @@
       if ($profile?.phone) guestPhone = $profile.phone;
     }
 
-    // Start the 15-minute pending payment timer
+    // Start the 30-minute pending payment timer
     bookingCreatedTime = new Date();
-    pendingMinutesRemaining = 15;
+    pendingMinutesRemaining = 30;
     startPendingTimer();
   } else {
     // Clear the timer when modal closes
@@ -258,7 +258,7 @@
         // Could add visual warning here
       }
 
-      // Auto-expire after 15 minutes
+      // Auto-expire after 30 minutes
       if (pendingMinutesRemaining <= 0) {
         if (pendingTimerInterval) {
             clearInterval(pendingTimerInterval);

@@ -4,9 +4,9 @@ import { createServerClient } from '$lib/supabase/server';
 import { sendMail } from '$lib/server/mail';
 import { isWeekend, addDays, formatTimeLabel } from '$lib/utils/dates';
 import { isVictorianHoliday } from '$lib/utils/holidays';
+import { expireStalePendingBookings } from '$lib/server/expireBookings';
 
 const ALLOWED_STATUSES = ['pending', 'paid', 'completed', 'cancelled', 'expired'];
-const PENDING_EXPIRY_MINUTES = 30;
 
 export const POST: RequestHandler = async ({ request }) => {
 	const supabase = createServerClient();
@@ -50,35 +50,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ message: 'Could not load the booking.' }, { status: 500 });
 	}
 
-	// Auto-expire pending bookings older than PENDING_EXPIRY_MINUTES
+	// Release any pending bookings that have now exceeded the 30-minute payment
+	// window (updates their status to 'expired' and emails the guests). This is
+	// the same sweep the server boot job and /api/bookings/expire run, so the
+	// affected bookings are handled here too — no separate per-booking expire
+	// branch needed.
+	await expireStalePendingBookings();
+
+	// Send payment reminders for pending bookings around 3–6 minutes old.
 	const now = new Date();
 	for (const booking of existings) {
 		if (booking.status === 'pending' && booking.created_at) {
 			const created = new Date(booking.created_at);
 			const diffMinutes = (now.getTime() - created.getTime()) / 60000;
-			if (diffMinutes >= PENDING_EXPIRY_MINUTES) {
-				// Auto-expire this booking
-				const { error: expireError } = await supabase
-					.from('bookings')
-					.update({ status: 'expired' })
-					.eq('id', booking.id);
-
-				if (expireError) {
-					console.error('Failed to auto-expire booking:', expireError);
-				}
-
-				// Notify the member
-				const memberEmail = booking.profile?.email || booking.guest_email;
-				if (memberEmail) {
-					sendMail({
-						to: memberEmail,
-						subject: 'Booking expired',
-						text: `Your booking for ${booking.room?.name || 'a room'} on ${booking.date} (${booking.start_time} - ${booking.end_time}) has expired due to non-payment.`
-					});
-				}
-			}
-			// Send payment reminder at approximately 10 minutes after booking creation
-			else if (diffMinutes >= 3 && diffMinutes < 6) {
+			if (diffMinutes >= 3 && diffMinutes < 6) {
 				const memberEmail = booking.profile?.email || booking.guest_email;
 				if (memberEmail) {
 					sendMail({
