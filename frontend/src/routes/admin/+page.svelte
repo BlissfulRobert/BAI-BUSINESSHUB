@@ -109,6 +109,7 @@
   let pendingPasswordConfirm = "";
   let avatarFile: File | null = null;
   $: avatarPreview = avatarFile ? URL.createObjectURL(avatarFile) : "";
+  let zoomedAvatarSrc: string | null = null;
 
   $: isLoggedIn = !!$user;
   $: isAdmin = $profile?.role === "admin";
@@ -298,7 +299,7 @@
     key: string;
     room?: Room;
     plan?: Plan;
-    profile?: { full_name: string; email: string };
+    profile?: { full_name: string; email: string; avatar_url?: string | null };
     guest_name: string;
     guest_email: string;
     start_time: string;
@@ -614,6 +615,18 @@
     avatarFile = (e.currentTarget as HTMLInputElement).files?.[0] || null;
   }
 
+  function zoomAvatar(src: string | null | undefined) {
+    if (src) zoomedAvatarSrc = src;
+  }
+
+  function closeAvatarZoom() {
+    zoomedAvatarSrc = null;
+  }
+
+  function handleWindowKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && zoomedAvatarSrc) closeAvatarZoom();
+  }
+
   async function uploadAvatar() {
     if (!avatarFile || !myProfile) return;
     await withProfileError(async () => {
@@ -661,6 +674,8 @@
 <svelte:head>
   <title>Admin Panel - BAI Business Hub</title>
 </svelte:head>
+
+<svelte:window on:keydown={handleWindowKeydown} />
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
   <!-- Header -->
@@ -968,9 +983,15 @@
             <div
               class="flex items-center gap-3 py-2.5 border-b border-dark-100/80 last:border-0 group"
             >
-              <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center flex-shrink-0">
-                <span class="text-xs font-bold text-primary-700">{(booking.profile?.full_name || booking.guest_name || '?')[0].toUpperCase()}</span>
-              </div>
+              {#if booking.profile?.avatar_url}
+                <div class="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                  <img src={booking.profile.avatar_url} alt="Profile" class="w-full h-full object-cover" />
+                </div>
+              {:else}
+                <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center flex-shrink-0">
+                  <span class="text-xs font-bold text-primary-700">{(booking.profile?.full_name || booking.guest_name || '?')[0].toUpperCase()}</span>
+                </div>
+              {/if}
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-semibold text-dark-800 truncate">
                   {booking.profile?.full_name || booking.guest_name}
@@ -1024,9 +1045,15 @@
                 <div
                   class="flex items-center gap-3 py-2.5 border-b border-dark-100/80 last:border-0"
                 >
-                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center flex-shrink-0">
-                    <span class="text-xs font-bold text-amber-700">{member.full_name[0].toUpperCase()}</span>
-                  </div>
+                  {#if member.avatar_url}
+                    <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+                      <img src={member.avatar_url} alt="Profile" class="w-full h-full object-cover" />
+                    </div>
+                  {:else}
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center flex-shrink-0">
+                      <span class="text-xs font-bold text-amber-700">{member.full_name[0].toUpperCase()}</span>
+                    </div>
+                  {/if}
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-dark-800 truncate">{member.full_name}</p>
                     <p class="text-xs text-dark-900 truncate">{member.email}</p>
@@ -1278,9 +1305,15 @@
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                           <!-- Guest -->
                           <div class="flex items-center gap-2 text-sm">
-                            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
-                              <span class="text-[10px] font-bold text-white">{guestInitials}</span>
-                            </div>
+                            {#if group.profile?.avatar_url}
+                              <div class="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 shadow-sm">
+                                <img src={group.profile.avatar_url} alt="Profile" class="w-full h-full object-cover" />
+                              </div>
+                            {:else}
+                              <div class="w-7 h-7 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                                <span class="text-[10px] font-bold text-white">{guestInitials}</span>
+                              </div>
+                            {/if}
                             <div class="min-w-0">
                               <p class="font-semibold text-dark-800 truncate">{group.profile?.full_name || group.guest_name}</p>
                               <p class="text-xs text-dark-900 truncate">{group.guest_email}</p>
@@ -1812,11 +1845,23 @@
               class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg"
             />
           {:else if myProfile.avatar_url}
-            <img
-              src={myProfile.avatar_url}
-              alt="Profile"
-              class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg"
-            />
+            <button
+              type="button"
+              on:click={() => zoomAvatar(myProfile.avatar_url)}
+              class="group relative block cursor-zoom-in"
+              title="Click to zoom"
+            >
+              <img
+                src={myProfile.avatar_url}
+                alt="Profile"
+                class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg transition-transform duration-200 group-hover:scale-105"
+              />
+              <span
+                class="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-white/90 border border-dark-200 flex items-center justify-center shadow-md"
+              >
+                <svg class="w-3.5 h-3.5 text-dark-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m-3-3h6"/></svg>
+              </span>
+            </button>
           {:else}
             <div
               class="w-24 h-24 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 ring-4 ring-primary-100 shadow-lg flex items-center justify-center"
@@ -1944,3 +1989,34 @@
     </div>
   {/if}
 </Modal>
+
+<!-- Avatar Zoom Overlay -->
+{#if zoomedAvatarSrc}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
+    on:click={closeAvatarZoom}
+  >
+    <button
+      type="button"
+      on:click={closeAvatarZoom}
+      class="absolute top-5 right-5 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+      aria-label="Close zoom"
+    >
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+    <button
+      type="button"
+      on:click|stopPropagation={() => {}}
+      class="block cursor-default"
+      aria-label="Zoomed profile"
+    >
+      <img
+        src={zoomedAvatarSrc}
+        alt="Zoomed profile"
+        class="max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain"
+      />
+    </button>
+  </div>
+{/if}
