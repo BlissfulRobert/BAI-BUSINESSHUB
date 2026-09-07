@@ -92,6 +92,9 @@
     if (!$user) return;
     loading = true;
     try {
+      // Expire now-due pending bookings so the dashboard reflects the current
+      // state immediately (the server boot job also sweeps every minute).
+      await postApi('/api/bookings/expire', {});
       const [bookingsRes, reviewsRes, reportsRes, membershipRes, usageRes] = await Promise.all([
         supabase
           .from('bookings')
@@ -300,7 +303,7 @@ async function submitReschedule() {
   // least one of its days is today or later; otherwise it belongs to "past".
   $: upcomingGroups = allBookingGroups.filter(g => {
     const today = new Date().toISOString().split('T')[0];
-    const active = g.status !== 'cancelled' && g.status !== 'completed';
+    const active = g.status !== 'cancelled' && g.status !== 'completed' && g.status !== 'expired';
     return active && g.dates.some(d => d >= today);
   });
 

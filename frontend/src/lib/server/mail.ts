@@ -1,10 +1,10 @@
 import nodemailer from 'nodemailer';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  MAILTRAP_HOST,
-  MAILTRAP_PORT,
-  MAILTRAP_USER,
-  MAILTRAP_PASSWORD,
+  MAILPIT_HOST,
+  MAILPIT_PORT,
+  MAILPIT_USER,
+  MAILPIT_PASSWORD,
   MAIL_FROM
 } from '$env/static/private';
 
@@ -13,12 +13,12 @@ let transporter: nodemailer.Transporter | null = null;
 function getTransporter(): nodemailer.Transporter {
   if (!transporter) {
     transporter = nodemailer.createTransport({
-      host: MAILTRAP_HOST,
-      port: Number(MAILTRAP_PORT),
+      host: MAILPIT_HOST,
+      port: Number(MAILPIT_PORT),
       secure: false, // Mailtrap sandbox uses STARTTLS on port 2525
       auth: {
-        user: MAILTRAP_USER,
-        pass: MAILTRAP_PASSWORD
+        user: MAILPIT_USER,
+        pass: MAILPIT_PASSWORD
       }
     });
   }

@@ -129,6 +129,9 @@
   async function loadData() {
     loading = true;
     try {
+      // Expire now-due pending bookings so the admin view reflects the current
+      // state immediately (the server boot job also sweeps every minute).
+      await postApi("/api/bookings/expire", {});
       const [
         bookingsRes,
         roomsRes,

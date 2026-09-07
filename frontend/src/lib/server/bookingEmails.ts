@@ -52,6 +52,33 @@ BAI Business Hub`
 	});
 }
 
+// Sent when a pending booking isn't paid within the 30-minute window and is
+// automatically released. Triggered by the shared expiry sweep
+// (lib/server/expireBookings.ts), which runs from the server boot job and from
+// the booking-related endpoints.
+export function sendBookingExpiredEmail(params: BookingEmailParams): void {
+	const { guestEmail, guestName, bookings } = params;
+	const numbers = referenceLabel(bookings);
+	const plural = bookings.length > 1;
+
+	sendMail({
+		to: guestEmail,
+		subject: `Booking expired \u2014 ${numbers}`,
+		text: `Hi ${guestName},
+
+The following booking${plural ? 's have' : ' has'} expired because payment wasn't completed within 30 minutes:
+
+${formatBookingList(bookings)}
+
+The room time slot${plural ? 's have' : ' has'} been released and ${plural ? 'are' : 'is'} available again. If you'd still like to book, please create a new booking.
+
+Booking reference${plural ? 's' : ''}: ${numbers}
+
+Thanks,
+BAI Business Hub`
+	});
+}
+
 // ~3 minutes, inside the 2\u20135 minute window described in the booking policy.
 const REMINDER_DELAY_MS = 3 * 60 * 1000;
 

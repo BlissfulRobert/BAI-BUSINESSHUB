@@ -5,6 +5,7 @@ import { isPastDate, isWeekend, rangesOverlap, timeToMinutes } from '$lib/utils/
 import { isVictorianHoliday } from '$lib/utils/holidays';
 import { sendMail, getAdminEmails } from '$lib/server/mail';
 import { sendBookingConfirmationEmail, schedulePaymentReminder } from '$lib/server/bookingEmails';
+import { expireStalePendingBookings } from '$lib/server/expireBookings';
 import type { BookingChargeType, Membership } from '$lib/types/database';
 
 const BLOCKING_STATUSES = ['pending', 'paid', 'completed'];
@@ -27,11 +28,11 @@ function monthEnd(isoDate: string): string {
 export const POST: RequestHandler = async ({ request }) => {
 	const supabase = createServerClient();
 
-	// There's no server-side session (no hooks.server.ts), so the client sends
-	// its access token and we verify it here rather than trusting a
-	// client-supplied user_id — this client uses the service-role key, which
-	// bypasses RLS, so this check is the only thing standing between "logged
-	// in as X" and "claims to be X".
+	// Endpoints verify the client's access token directly rather than relying on
+	// a server-side session (hooks.server.ts only starts the expiry job). The
+	// Supabase server client uses the service-role key, which bypasses RLS, so
+	// this check is the only thing standing between "logged in as X" and "claims
+	// to be X".
 	const authHeader = request.headers.get('authorization');
 	const accessToken = authHeader?.replace('Bearer ', '');
 
@@ -361,6 +362,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			text: `A new booking has been submitted for ${room?.name ?? 'a room'} on ${dateList} from ${start_time} to ${end_time} by ${guest_name} (${guest_email}). Booking reference: ${bookingNumbersLabel}. It is pending payment.`
 		});
 	}
+
+	// Release any pending bookings that have now exceeded the 30-minute payment
+	// window. Fire-and-forget so a slow sweep can never block the successful
+	// booking response.
+	void expireStalePendingBookings();
 
 	return json({ bookings }, { status: 201 });
 };
