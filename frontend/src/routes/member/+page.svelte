@@ -54,6 +54,7 @@
   let pendingPasswordConfirm = '';
   let avatarFile: File | null = null;
   $: avatarPreview = avatarFile ? URL.createObjectURL(avatarFile) : '';
+  let zoomedAvatarSrc: string | null = null;
 
   let selectedReportBookingId = '';
 
@@ -408,6 +409,18 @@ async function submitReschedule() {
     avatarFile = (e.currentTarget as HTMLInputElement).files?.[0] || null;
   }
 
+  function zoomAvatar(src: string | null | undefined) {
+    if (src) zoomedAvatarSrc = src;
+  }
+
+  function closeAvatarZoom() {
+    zoomedAvatarSrc = null;
+  }
+
+  function handleWindowKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && zoomedAvatarSrc) closeAvatarZoom();
+  }
+
   async function uploadAvatar() {
     if (!avatarFile || !myProfile) return;
     await withProfileError(async () => {
@@ -448,6 +461,8 @@ async function submitReschedule() {
 <svelte:head>
   <title>My Dashboard - BAI Business Hub</title>
 </svelte:head>
+
+<svelte:window on:keydown={handleWindowKeydown} />
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8 bg-gradient-to-r from-primary-700 to-primary-900 rounded-2xl px-8 py-8">
@@ -985,11 +1000,23 @@ async function submitReschedule() {
               class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg"
             />
           {:else if myProfile.avatar_url}
-            <img
-              src={myProfile.avatar_url}
-              alt="Profile"
-              class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg"
-            />
+            <button
+              type="button"
+              on:click={() => zoomAvatar(myProfile.avatar_url)}
+              class="group relative block cursor-zoom-in"
+              title="Click to zoom"
+            >
+              <img
+                src={myProfile.avatar_url}
+                alt="Profile"
+                class="w-24 h-24 rounded-full object-cover ring-4 ring-primary-100 shadow-lg transition-transform duration-200 group-hover:scale-105"
+              />
+              <span
+                class="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-white/90 border border-dark-200 flex items-center justify-center shadow-md"
+              >
+                <svg class="w-3.5 h-3.5 text-dark-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m-3-3h6"/></svg>
+              </span>
+            </button>
           {:else}
             <div
               class="w-24 h-24 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 ring-4 ring-primary-100 shadow-lg flex items-center justify-center"
@@ -1117,3 +1144,34 @@ async function submitReschedule() {
     </div>
   {/if}
 </Modal>
+
+<!-- Avatar Zoom Overlay -->
+{#if zoomedAvatarSrc}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
+    on:click={closeAvatarZoom}
+  >
+    <button
+      type="button"
+      on:click={closeAvatarZoom}
+      class="absolute top-5 right-5 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+      aria-label="Close zoom"
+    >
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+    <button
+      type="button"
+      on:click|stopPropagation={() => {}}
+      class="block cursor-default"
+      aria-label="Zoomed profile"
+    >
+      <img
+        src={zoomedAvatarSrc}
+        alt="Zoomed profile"
+        class="max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain"
+      />
+    </button>
+  </div>
+{/if}
