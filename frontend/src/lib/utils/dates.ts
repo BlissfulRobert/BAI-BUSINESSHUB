@@ -121,8 +121,12 @@ export function isWeekend(iso: string): boolean {
  * start date itself falls on a closed day the first open weekday on/after it is
  * used as day one. Monthly = the same date range up to (but not including) the
  * same date next month. Any other plan is a single day.
+ *
+ * This is the single source of truth for both the client (prediction, calendar
+ * range highlight) and the server (stored end_date + conflict checks), so the
+ * days shown to the user always match the stored period.
  */
-export function getSeriesDates(startIso: string, plan: Plan): string[] {
+export function getSeriesDates(startIso: string, plan: Pick<Plan, 'slug'>): string[] {
 	if (plan.slug === 'weekly') {
 		const dates: string[] = [];
 		let cur = startIso;
@@ -141,39 +145,6 @@ export function getSeriesDates(startIso: string, plan: Plan): string[] {
 		return dates;
 	}
 	return [startIso];
-}
-
-/**
- * Weekly series: 5 weekdays rolling forward from the chosen start, skipping
- * weekends, public holidays, and any day that's already fully booked (no free
- * 1-hour block left), so the pass is still 5 rentable days even when some days
- * are taken. Sequential so a Tuesday start rolls Mon–Fri of the following weeks.
- */
-export function getWeeklySeriesDates(
-	startIso: string,
-	bookingsByDate: Record<string, Booking[]>
-): string[] {
-	const dates: string[] = [];
-	let cur = startIso;
-	let guard = 0;
-	while (dates.length < 5 && guard < 366) {
-		guard++;
-		if (!isWeekend(cur) && !isVictorianHoliday(cur) && !isDateFullyBooked(bookingsByDate[cur] ?? [])) {
-			dates.push(cur);
-		}
-		cur = addDays(cur, 1);
-	}
-	return dates;
-}
-
-/**
- * A day counts as "fully booked" if there's no free 1-hour block left in
- * business hours — used for the calendar's per-day indicator, independent
- * of whatever duration the member ends up picking.
- */
-export function isDateFullyBooked(existingBookingsForDate: Booking[]): boolean {
-	const hourlySlots = buildTimeSlots(1, existingBookingsForDate);
-	return hourlySlots.length > 0 && hourlySlots.every((slot) => !slot.available);
 }
 
 export type DayAvailability = 'free' | 'partial' | 'full';

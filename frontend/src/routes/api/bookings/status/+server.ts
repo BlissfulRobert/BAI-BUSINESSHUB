@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createServerClient } from '$lib/supabase/server';
 import { sendMail } from '$lib/server/mail';
-import { isWeekend, addDays, formatTimeLabel } from '$lib/utils/dates';
+import { isWeekend, addDays, formatTimeLabel, getSeriesDates } from '$lib/utils/dates';
 import { isVictorianHoliday } from '$lib/utils/holidays';
 import { expireStalePendingBookings } from '$lib/server/expireBookings';
 
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Load the affected bookings with room name and the owning member's email.
 	const { data: existings, error: loadError } = await supabase
 		.from('bookings')
-		.select('*, room:rooms(name), profile:profiles(email, full_name), created_at')
+		.select('*, room:rooms(name), profile:profiles(email, full_name), plan:plans(slug), created_at')
 		.in('id', bookingIds);
 
 	if (loadError || !existings) {
@@ -146,6 +146,20 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (body.date) patch.date = body.date;
 	if (body.start_time) patch.start_time = body.start_time;
 	if (body.end_time) patch.end_time = body.end_time;
+
+	// Weekly/Monthly passes are a single period row (date..end_date). On
+	// reschedule the span is re-derived from the new start date using the same
+	// getSeriesDates helper that set it at creation. Legacy multi-row series
+	// (end_date NULL, created before migration 011) keep their old per-row
+	// shift behaviour.
+	const rescheduleTarget = existings[0];
+	const reschedulePlanSlug = rescheduleTarget?.plan?.slug;
+	if (body.date && rescheduleTarget?.end_date) {
+		if (reschedulePlanSlug === 'weekly' || reschedulePlanSlug === 'monthly') {
+			const covered = getSeriesDates(body.date, { slug: reschedulePlanSlug });
+			patch.end_date = covered[covered.length - 1];
+		}
+	}
 
 	const { error: updateError } = await supabase
 		.from('bookings')

@@ -39,6 +39,8 @@ export interface Booking {
 	user_id: string;
 	plan_id: string | null;
 	date: string; // ISO date, e.g. '2026-08-27'
+	// Last covered day for Weekly/Monthly period bookings (NULL for single-day).
+	end_date: string | null; // ISO date, e.g. '2026-09-30'
 	start_time: string; // 'HH:MM:SS'
 	end_time: string; // 'HH:MM:SS'
 	guest_name: string;

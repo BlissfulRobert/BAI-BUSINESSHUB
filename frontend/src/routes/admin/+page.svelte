@@ -429,9 +429,10 @@
 
   $: totalRevenue = (() => {
     // Price each booking with the same rules as the member quote (per-room
-    // weekly/monthly rates etc.) via quoteForStoredBooking. Weekly/Monthly
-    // create one bookings row per day, so charge each series only once —
-    // group rows by plan+room for those plans and by booking id otherwise.
+    // weekly/monthly rates etc.) via quoteForStoredBooking. Weekly/Monthly are
+    // charged once per pass: a modern pass is a single row, so charging each
+    // row once is correct; legacy multi-row series (same created_at) are
+    // collapsed so they're still counted a single time.
     const seen = new Set<string>();
     return bookings
       .filter((b) => b.status === "completed" || b.status === "paid")
@@ -439,7 +440,7 @@
         const slug = b.plan?.slug;
         const seriesKey =
           slug === "weekly" || slug === "monthly"
-            ? `${b.plan_id ?? ""}::${b.room_id}`
+            ? `${b.plan_id ?? ""}::${b.room_id}::${b.created_at ?? ""}`
             : b.id;
         if (seen.has(seriesKey)) return sum;
         seen.add(seriesKey);

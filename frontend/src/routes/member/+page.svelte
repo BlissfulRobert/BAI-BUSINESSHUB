@@ -295,9 +295,9 @@ async function submitReschedule() {
     isSeries: boolean;
   }
 
-  // Weekly/Monthly create one booking row per date, but they are a single
-  // purchase. Group them back into one "series" so each pass shows as a single
-  // card listing its assigned days. See lib/utils/booking-groups.ts.
+  // Weekly/Monthly passes are a single booking row spanning date..end_date,
+  // expanded back into their covered days by groupBookings so each pass shows
+  // as a single card listing its reserved days. See lib/utils/booking-groups.ts.
   $: allBookingGroups = groupBookings(bookings);
 
   // A pass is "upcoming" while it is active (not cancelled/completed) and at
@@ -932,7 +932,7 @@ async function submitReschedule() {
 
       {#if rescheduleGroup.isSeries}
         <p class="text-xs text-dark-500">
-          This is a {rescheduleGroup.plan?.name || 'weekly'} pass. Rescheduling moves all {rescheduleGroup.dates.length} scheduled days by the same amount and keeps the daily time window.
+          This is a {rescheduleGroup.plan?.name || 'weekly'} pass. Rescheduling moves the pass to the new start date and re-spans its week/month from there, keeping the daily time window.
         </p>
       {:else}
         <p class="text-xs text-dark-500">

@@ -1,7 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createServerClient } from '$lib/supabase/server';
-import { isPastDate, isWeekend, rangesOverlap, timeToMinutes } from '$lib/utils/dates';
+import {
+	addDays,
+	getSeriesDates,
+	isPastDate,
+	isWeekend,
+	MAX_SERIES_DAYS,
+	rangesOverlap,
+	timeToMinutes
+} from '$lib/utils/dates';
 import { isVictorianHoliday } from '$lib/utils/holidays';
 import { sendMail, getAdminEmails } from '$lib/server/mail';
 import { sendBookingConfirmationEmail, schedulePaymentReminder } from '$lib/server/bookingEmails';
@@ -83,27 +91,51 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ message: 'Cannot book a date in the past.' }, { status: 400 });
 	}
 
-	// Re-check availability server-side for every date in the series — the
-	// client's slot list may be stale if someone else booked one of these
-	// dates in the meantime. There's no DB-level exclusion constraint on
-	// (room_id, date, time range) in the current schema, so this
-	// check-then-insert is best-effort; consider adding a Postgres EXCLUDE
-	// constraint (btree_gist) on bookings for airtight protection.
+	const { data: room } = await supabase
+		.from('rooms')
+		.select('id, slug, name')
+		.eq('id', room_id)
+		.single();
+
+	const { data: plan } = plan_id
+		? await supabase.from('plans').select('id, slug, name').eq('id', plan_id).single()
+		: { data: null };
+
+	// A Weekly/Monthly pass is stored as ONE booking row: `date` = first covered
+	// day, `end_date` = last covered day (NULL for single-day plans). The covered
+	// days are derived from the shared getSeriesDates helper — the same one the
+	// client uses — so validation below always matches what the user saw.
+	const startDate = dates[0];
+	const coveredDates = getSeriesDates(startDate, plan ?? { slug: 'single' });
+	const endDate = coveredDates[coveredDates.length - 1];
+	const coversDay = (b: { date: string; end_date: string | null }, iso: string) =>
+		b.date <= iso && iso <= (b.end_date ?? b.date);
+
+	// Re-check availability server-side for the whole requested span. The client
+	// slot list may be stale if someone else booked one of these days in the
+	// meantime. An existing booking can only overlap the requested range if its
+	// start date is between (start - max period length) and (requested end), so
+	// we fetch that superset and do range-overlap + per-day time checks in JS.
+	// There's no DB-level exclusion constraint covering period rows in the
+	// current schema, so this check-then-insert is best-effort; consider a
+	// Postgres EXCLUDE constraint (btree_gist) for airtight protection.
+	const rangeLookback = addDays(startDate, -MAX_SERIES_DAYS);
 	const { data: existing, error: existingError } = await supabase
 		.from('bookings')
-		.select('date, start_time, end_time')
+		.select('date, end_date, start_time, end_time')
 		.eq('room_id', room_id)
-		.in('date', dates)
+		.gte('date', rangeLookback)
+		.lte('date', endDate)
 		.in('status', BLOCKING_STATUSES);
 
 	if (existingError) {
 		return json({ message: 'Could not verify availability. Please try again.' }, { status: 500 });
 	}
 
-	const conflictDates = dates.filter((date: string) =>
+	const conflictDates = coveredDates.filter((date) =>
 		(existing ?? []).some(
-			(b: { date: string; start_time: string; end_time: string }) =>
-				b.date === date &&
+			(b: { date: string; end_date: string | null; start_time: string; end_time: string }) =>
+				coversDay(b, date) &&
 				rangesOverlap(
 					timeToMinutes(start_time),
 					timeToMinutes(end_time),
@@ -116,8 +148,12 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (conflictDates.length > 0) {
 		return json(
 			{
-				message: `That time is already booked on: ${conflictDates.join(', ')}. Please pick another time or start date.`,
-				conflictDates
+				message:
+					coveredDates.length > 1
+						? `That time is already booked on one of the days in your range (${startDate} \u2192 ${endDate}). Please pick another time or start date.`
+						: `That time is already booked on: ${conflictDates.join(', ')}. Please pick another time or start date.`,
+				conflictDates,
+				range: coveredDates.length > 1 ? { start: startDate, end: endDate } : undefined
 			},
 			{ status: 409 }
 		);
@@ -128,22 +164,17 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Determine, per date, whether the booking is covered by the user's
 	// membership included hours ('membership'), bills as additional usage at
 	// standard rates ('additional'), or is a separate pass purchase (null).
+	// Membership coverage only applies to on-demand single-day bookings.
 	// ==========================================================
-	const { data: room } = await supabase
-		.from('rooms')
-		.select('id, slug, name')
-		.eq('id', room_id)
-		.single();
-
-	const { data: plan } = plan_id
-		? await supabase.from('plans').select('id, slug, name').eq('id', plan_id).single()
-		: { data: null };
+	const isOnDemand =
+		!!plan && ON_DEMAND_PLAN_SLUGS.includes(plan.slug as string);
+	const minutes = timeToMinutes(end_time) - timeToMinutes(start_time);
 
 	// Block bookings on closed days (weekends and Victorian public holidays).
 	// Monthly passes are a recurring calendar-month access and keep their full
 	// range; every other plan must book on an open weekday.
 	if (plan?.slug !== 'monthly') {
-		const closed = dates.filter((d: string) => isWeekend(d) || isVictorianHoliday(d));
+		const closed = coveredDates.filter((d) => isWeekend(d) || isVictorianHoliday(d));
 		if (closed.length > 0) {
 			return json(
 				{
@@ -155,11 +186,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	// Check administrator-controlled closed dates.
+	// Check administrator-controlled closed dates across the whole covered span
+	// (a weekly pass must not land on a day the admin has closed).
 	const { data: adminClosedDates } = await supabase
 		.from('closed_dates')
 		.select('date')
-		.in('date', dates);
+		.in('date', coveredDates);
 
 	if (adminClosedDates && adminClosedDates.length > 0) {
 		return json(
@@ -201,21 +233,22 @@ export const POST: RequestHandler = async ({ request }) => {
 		const priorityCutoff = new Date(Date.now() - priorityWindowMs);
 		const { data: memberBookings } = await supabase
 			.from('bookings')
-			.select('date, start_time, end_time, status, created_at, updated_at')
+			.select('date, end_date, start_time, end_time, status, created_at, updated_at')
 			.eq('room_id', room_id)
 			.in('status', ['paid', 'completed']);
 
 		if (memberBookings && memberBookings.length > 0) {
 			for (const mb of memberBookings) {
-				const bookingDate = new Date(mb.date);
 				const bookingStart = timeToMinutes(mb.start_time);
 				const bookingEnd = timeToMinutes(mb.end_time);
 				const requestStart = timeToMinutes(start_time);
 				const requestEnd = timeToMinutes(end_time);
 
-				// Check for overlap and if the member booking is within the priority window
+				// Check for overlap and if the member booking is within the priority
+				// window. Period memberships (single Weekly/Monthly row) count as
+				// covering the start day when the span includes it (coversDay).
 				if (
-					mb.date === dates[0] &&
+					coversDay(mb, dates[0]) &&
 					!((bookingEnd <= requestStart) || (bookingStart >= requestEnd))
 				) {
 					const memberBookingTime = new Date(mb.created_at ?? mb.updated_at ?? Date.now());
@@ -228,10 +261,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		}
 	}
-
-	const isOnDemand =
-		!!plan && ON_DEMAND_PLAN_SLUGS.includes(plan.slug as string);
-	const minutes = timeToMinutes(end_time) - timeToMinutes(start_time);
 
 	const chargeTypeByDate: Record<string, BookingChargeType> = {};
 	let usageByPeriod: { period_start: string; period_end: string; minutes: number }[] = [];
@@ -276,14 +305,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	// A single multi-row INSERT is one statement, so Postgres commits or
-	// rolls back the whole series together if something else (e.g. a
-	// constraint violation) fails partway through.
-	const rows = dates.map((date: string) => ({
+	// Weekly/Monthly passes are a SINGLE row spanning date..end_date instead of
+	// one row per day. Single-day plans store end_date = NULL.
+	const row = {
 		room_id,
 		user_id: user.id,
 		plan_id: plan_id ?? null,
-		date,
+		date: startDate,
+		end_date: coveredDates.length > 1 ? endDate : null,
 		start_time,
 		end_time,
 		guest_name,
@@ -292,12 +321,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		purpose: purpose ?? null,
 		status: 'pending',
 		payment_method: 'onsite',
-		charge_type: chargeTypeByDate[date] ?? null
-	}));
+		charge_type: chargeTypeByDate[startDate] ?? null
+	};
 
 	// booking_number is assigned automatically by a DB trigger on insert, so
 	// it comes back for free in .select() — no need to generate it here.
-	const { data: bookings, error: insertError } = await supabase.from('bookings').insert(rows).select();
+	const { data: bookings, error: insertError } = await supabase
+		.from('bookings')
+		.insert(row)
+		.select();
 
 	if (insertError) {
 		return json({ message: 'Could not create the booking. Please try again.' }, { status: 500 });
@@ -328,6 +360,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		id: b.id as string,
 		booking_number: b.booking_number as string,
 		date: b.date as string,
+		end_date: (b.end_date as string | null) ?? null,
 		start_time: b.start_time as string,
 		end_time: b.end_time as string
 	}));
@@ -355,11 +388,14 @@ export const POST: RequestHandler = async ({ request }) => {
 	// `room` was already loaded for membership coverage above.
 	const admins = await getAdminEmails(supabase);
 	if (admins.length > 0) {
-		const dateList = dates.join(', ');
+		const dateLabel =
+			coveredDates.length > 1
+				? `${coveredDates[0]} \u2192 ${coveredDates[coveredDates.length - 1]} (${coveredDates.length} days)`
+				: startDate;
 		sendMail({
 			to: admins,
 			subject: `New booking submitted \u2014 ${bookingNumbersLabel}`,
-			text: `A new booking has been submitted for ${room?.name ?? 'a room'} on ${dateList} from ${start_time} to ${end_time} by ${guest_name} (${guest_email}). Booking reference: ${bookingNumbersLabel}. It is pending payment.`
+			text: `A new booking has been submitted for ${room?.name ?? 'a room'} on ${dateLabel} from ${start_time} to ${end_time} by ${guest_name} (${guest_email}). Booking reference: ${bookingNumbersLabel}. It is pending payment.`
 		});
 	}
 

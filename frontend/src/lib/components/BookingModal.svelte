@@ -9,10 +9,11 @@
     CALENDAR_LOOKAHEAD_DAYS,
     HUB_CLOSE_HOUR,
     HUB_OPEN_HOUR,
+    MAX_SERIES_DAYS,
+    addDays,
     buildTimeSlots,
     getFreeHourCount,
     getSeriesDates,
-    getWeeklySeriesDates,
     rangesOverlap,
   } from "$lib/utils/dates";
   import { formatDate, getRoomImage, formatCurrency } from "$lib/utils/format";
@@ -123,8 +124,9 @@
 
   const stepTitles = ["Plan & Date", "Time & Details", "Confirm"];
 
-  // Weekly/Monthly plans repeat the same time across several dates; keep the
-  // room's blocking bookings so the calendar can mark fully-booked days.
+  // Weekly/Monthly passes are stored as ONE booking row spanning from the
+  // start date to end_date; the covered dates are expanded from that row below
+  // so the calendar marks every covered day as blocked.
   let bookingsByDate: Record<string, Booking[]> = {};
 
   $: isSeriesPlan =
@@ -139,11 +141,13 @@
     startTime = "09:00";
     endTime = "19:00";
   }
+  // The covered days for a weekly/monthly pass. Uses the same shared helper as
+  // the server (getSeriesDates), so what the user sees is always what gets
+  // stored. The stored booking is a single row: date = first of these days,
+  // end_date = last of them.
   $: seriesDates =
     selectedPlan && selectedDate
-      ? selectedPlan.slug === "weekly"
-        ? getWeeklySeriesDates(selectedDate, bookingsByDate)
-        : getSeriesDates(selectedDate, selectedPlan)
+      ? getSeriesDates(selectedDate, selectedPlan)
       : [];
 
   // All 1-hour blocks for the selected (start) date plus whether each one is
@@ -171,16 +175,26 @@
     const { data } = await supabase
       .from("bookings")
       .select(
-        "id, room_id, user_id, plan_id, date, start_time, end_time, status",
+        "id, room_id, user_id, plan_id, date, end_date, start_time, end_time, status",
       )
       .eq("room_id", room.id)
       .gte("date", today)
       .in("status", BLOCKING_STATUSES);
 
+    // Weekly/Monthly passes are a single row spanning date..end_date; expand
+    // each row back into every covered day so all per-day views (calendar
+    // dots, step-1 hour chips, step-2 greyed times) treat the span as blocked.
     bookingsByDate = ((data ?? []) as Booking[]).reduce<
       Record<string, Booking[]>
     >((acc, b) => {
-      (acc[b.date] ??= []).push(b);
+      const end = b.end_date ?? b.date;
+      let cur = b.date;
+      let guard = 0;
+      while (cur <= end && guard <= MAX_SERIES_DAYS) {
+        guard++;
+        (acc[cur] ??= []).push(b);
+        cur = addDays(cur, 1);
+      }
       return acc;
     }, {});
   }
@@ -715,8 +729,9 @@
           room_id: room.id,
           plan_id: selectedPlan.id,
 
-          // Weekly/Monthly book every day in the series; single-day
-          // plans send a one-element array.
+          // Send the pass start date (first series day). The server derives
+          // the stored period (date + end_date) from the same getSeriesDates
+          // helper. Single-day plans send a one-element array.
           dates: isSeriesPlan ? seriesDates : [selectedDate],
 
           start_time: startTime,

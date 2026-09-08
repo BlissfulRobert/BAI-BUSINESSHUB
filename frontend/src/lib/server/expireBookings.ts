@@ -7,6 +7,7 @@ type ExpirableBooking = {
 	id: string;
 	booking_number: string;
 	date: string;
+	end_date: string | null;
 	start_time: string;
 	end_time: string;
 	guest_name: string;
@@ -29,7 +30,7 @@ export async function expireStalePendingBookings(): Promise<number> {
 	const { data: stale, error } = await supabase
 		.from('bookings')
 		.select(
-			'id, booking_number, date, start_time, end_time, guest_name, guest_email, room:rooms(name), profile:profiles(email, full_name)'
+			'id, booking_number, date, end_date, start_time, end_time, guest_name, guest_email, room:rooms(name), profile:profiles(email, full_name)'
 		)
 		.eq('status', 'pending')
 		.lt('created_at', cutoff);
@@ -63,6 +64,7 @@ export async function expireStalePendingBookings(): Promise<number> {
 					id: booking.id,
 					booking_number: booking.booking_number,
 					date: booking.date,
+					end_date: booking.end_date ?? null,
 					start_time: booking.start_time,
 					end_time: booking.end_time
 				}
