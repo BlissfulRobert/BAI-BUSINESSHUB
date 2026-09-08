@@ -74,6 +74,11 @@
   // step 2, where the member still has form fields to fill in.
   let exclusionModalAdvances = false;
 
+  // "View schedule" pop-up — shows the pass's calendar (scheduled day in blue,
+  // partially booked with an orange dot, weekends grey, holidays sky-blue with
+  // a blue dot) over the plan's chosen date window.
+  let showSchedule = false;
+
   // Keep the readonly details fields in sync with the signed-in profile. This
   // covers the case where a guest logs in/registers mid-booking: the saved
   // draft's name/email/phone are empty, and $profile may not have loaded yet
@@ -181,6 +186,14 @@
 
   function dismissExclusionModal() {
     showExclusionModal = false;
+  }
+
+  function openSchedule() {
+    showSchedule = true;
+  }
+
+  function closeSchedule() {
+    showSchedule = false;
   }
 
   function prevStep() {
@@ -1878,6 +1891,26 @@
                 </p>
               </div>
             </div>
+            <button
+              type="button"
+              on:click={openSchedule}
+              class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-primary-200 bg-white px-4 py-2.5 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+            >
+              <svg
+                class="h-4 w-4 text-primary-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+              View schedule
+            </button>
           {/if}
 
           {#if !fixedTimePlan}
@@ -2399,6 +2432,67 @@
             </button>
           </div>
         {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Schedule pop-up — shown from the "View schedule" button under the estimated
+     total. A read-only calendar of the pass's chosen date window: the scheduled
+     day is blue, partially booked days carry an orange dot, weekends are grey,
+     and public holidays are sky-blue with a blue dot. -->
+{#if showSchedule && isOpen && selectedDate && room}
+  <div
+    class="fixed inset-0 z-[60] overflow-y-auto bg-black/60 backdrop-blur-sm p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="schedule-modal-title"
+  >
+    <div class="flex min-h-full items-center justify-center">
+      <div class="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-dark-100 px-4 py-3.5">
+          <h3 id="schedule-modal-title" class="text-sm font-bold text-dark-900">
+            Schedule for {room.name}
+          </h3>
+          <button
+            type="button"
+            on:click={closeSchedule}
+            class="rounded-lg p-1.5 text-dark-500 transition hover:bg-dark-100"
+            aria-label="Close"
+          >
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="p-4">
+          <p class="mb-2.5 text-xs text-dark-500">
+            {#if isSeriesPlan && seriesDates.length > 1}
+              Your {selectedPlan?.name?.toLowerCase() ?? "pass"} runs
+              {formatDate(seriesDates[0])} → {formatDate(seriesDates[seriesDates.length - 1])}.
+            {:else}
+              Your scheduled date is
+              <span class="font-semibold text-dark-700">{formatDate(selectedDate)}</span>.
+            {/if}
+          </p>
+          <Calendar
+            {bookingsByDate}
+            {selectedDate}
+            rangeDates={isSeriesPlan ? seriesDates : []}
+            lookaheadDays={CALENDAR_LOOKAHEAD_DAYS}
+            initialDate={selectedDate}
+            readonly
+            compact
+            hideFullyBooked
+          />
+          <button
+            type="button"
+            on:click={closeSchedule}
+            class="btn-primary mt-3 flex w-full items-center justify-center px-4 py-2 text-sm font-semibold"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   </div>

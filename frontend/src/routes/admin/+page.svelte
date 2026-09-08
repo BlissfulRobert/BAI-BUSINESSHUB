@@ -28,7 +28,9 @@
   } from "$lib/utils/pricing";
   import { groupBookings, dateRangeLabel } from "$lib/utils/booking-groups";
   import { safeKey, safeStringKey } from "$lib/utils/keys";
+  import { CALENDAR_LOOKAHEAD_DAYS } from "$lib/utils/dates";
   import Modal from "$lib/components/Modal.svelte";
+  import Calendar from "$lib/components/Calendar.svelte";
 
   let bookings: Booking[] = [];
   let rooms: Room[] = [];
@@ -67,6 +69,12 @@
   // Bulk actions selection.
   let selectedBookingIds = new Set<string>();
   let bulkLoading = false;
+
+  // "View schedule" pop-up — shows the room's calendar for the selected booking
+  // group: the scheduled day(s) in blue, partially booked days with an orange
+  // dot, weekends grey, and public holidays sky-blue with a blue dot.
+  let showSchedule = false;
+  let scheduleGroup: AdminBookingGroup | null = null;
 
   async function postApi(path: string, payload: unknown): Promise<boolean> {
     const {
@@ -363,6 +371,41 @@
             ? 1
             : 0,
     );
+
+  // Statuses that actually hold the room (same set the member wizard treats as
+  // blocking) — used to build the view-schedule calendar for a booking group.
+  const SCHEDULE_BLOCKING_STATUSES = ["pending", "paid", "completed"];
+
+  // The clicked booking's room availability, keyed by ISO date, so the pop-up
+  // calendar can show partial/fully booked days with dots.
+  $: scheduleBookingsByDate = (() => {
+    if (!scheduleGroup?.room?.id) return {};
+    const result: Record<string, Booking[]> = {};
+    for (const b of bookings) {
+      if (b.room_id !== scheduleGroup.room.id) continue;
+      if (!SCHEDULE_BLOCKING_STATUSES.includes(b.status)) continue;
+      (result[b.date] ??= []).push(b);
+    }
+    return result;
+  })();
+
+  // Allow forward navigation in the pop-up far enough to see the whole range.
+  $: scheduleLookahead = (() => {
+    const dates = scheduleGroup?.dates ?? [];
+    if (dates.length === 0) return CALENDAR_LOOKAHEAD_DAYS;
+    const last = new Date(`${dates[dates.length - 1]}T00:00:00`);
+    const diffDays = Math.ceil((last.getTime() - Date.now()) / 86400000);
+    return Math.max(CALENDAR_LOOKAHEAD_DAYS, diffDays + 7);
+  })();
+
+  function openSchedule(group: AdminBookingGroup) {
+    scheduleGroup = group;
+    showSchedule = true;
+  }
+
+  function closeSchedule() {
+    showSchedule = false;
+  }
 
   $: filteredMembers = members.filter((m) => {
     const q = searchQuery.trim().toLowerCase();
@@ -1367,6 +1410,15 @@
 
                       <!-- Actions column -->
                       <div class="flex items-center gap-1.5 flex-wrap lg:flex-col lg:items-end lg:flex-shrink-0">
+                        <button
+                          type="button"
+                          on:click={() => openSchedule(group)}
+                          class="flex items-center gap-1.5 border border-dark-200 bg-white text-xs font-semibold text-dark-700 px-3 py-2 rounded-lg hover:border-primary-300 hover:text-primary-700 hover:bg-primary-50 transition-all"
+                          title="View room schedule"
+                        >
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                          View Schedule
+                        </button>
                         {#if unseen}
                           <button on:click={() => markBookingGroupSeen(group)} class="text-[11px] text-dark-900 hover:text-dark-900 px-2.5 py-1.5 rounded-lg hover:bg-dark-100 transition-colors font-medium" title="Dismiss notification">
                             <svg class="w-3.5 h-3.5 mr-0.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
@@ -2004,6 +2056,67 @@
     </div>
   {/if}
 </Modal>
+
+<!-- View schedule pop-up — shown from the "View Schedule" button on each
+     booking request. A read-only calendar of the room's schedule for that
+     booking: the scheduled day(s) are blue, partially booked days carry an
+     orange dot, weekends are grey, and public holidays are sky-blue with a
+     blue dot. -->
+{#if showSchedule && scheduleGroup}
+  <div
+    class="fixed inset-0 z-[90] overflow-y-auto bg-black/60 backdrop-blur-sm p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="schedule-modal-title"
+  >
+    <div class="flex min-h-full items-center justify-center">
+      <div class="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-dark-100 px-4 py-3.5">
+          <h3 id="schedule-modal-title" class="text-sm font-bold text-dark-900">
+            Schedule for {scheduleGroup.room?.name || "Room"}
+          </h3>
+          <button
+            type="button"
+            on:click={closeSchedule}
+            class="rounded-lg p-1.5 text-dark-500 transition hover:bg-dark-100"
+            aria-label="Close"
+          >
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="p-4">
+          <p class="mb-2.5 text-xs text-dark-500">
+            {#if scheduleGroup.isSeries}
+              {scheduleGroup.profile?.full_name || scheduleGroup.guest_name || "Member"}'s
+              pass runs
+              <span class="font-semibold text-dark-700">{formatDate(scheduleGroup.dates[0])} &rarr; {formatDate(scheduleGroup.dates[scheduleGroup.dates.length - 1])}</span>.
+            {:else}
+              Scheduled date is
+              <span class="font-semibold text-dark-700">{formatDate(scheduleGroup.dates[0])}</span>.
+            {/if}
+          </p>
+          <Calendar
+            bookingsByDate={scheduleBookingsByDate}
+            selectedDate={scheduleGroup.dates[0]}
+            rangeDates={scheduleGroup.isSeries ? scheduleGroup.dates : []}
+            lookaheadDays={scheduleLookahead}
+            initialDate={scheduleGroup.dates[0]}
+            readonly
+            compact
+            hideFullyBooked
+          />
+          <button
+            type="button"
+            on:click={closeSchedule}
+            class="btn-primary mt-3 flex w-full items-center justify-center px-4 py-2 text-sm font-semibold"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Avatar Zoom Overlay -->
 {#if zoomedAvatarSrc}
