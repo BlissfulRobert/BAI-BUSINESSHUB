@@ -343,7 +343,10 @@
                   d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                 />
               </svg>
-              123 Business Street, Melbourne VIC 3000
+              Australia (Local Office)
+              <br />
+              Level 1, A24, Marriott Waters Shopping Centre, 8-10 Society
+              Avenue, Lyndhurst VIC 3975
             </li>
             <li class="flex items-center gap-2">
               <svg

@@ -583,7 +583,10 @@
             <div>
               <h3 class="text-white font-medium">Address</h3>
               <p class="text-sm text-primary-100">
-                123 Business Street, Melbourne VIC 3000
+                Australia (Local Office)
+                <br />
+                Level 1, A24, Marriott Waters Shopping Centre, 8-10 Society
+                Avenue, Lyndhurst VIC 3975
               </p>
             </div>
           </div>
@@ -646,7 +649,7 @@
       <div
         class="isolate h-[400px] lg:h-full min-h-[400px] lg:min-h-[520px] lg:-mr-24 rounded-xl overflow-hidden border border-white/20 shadow-2xl lg:mt-16"
       >
-        <Map lat={-37.8136} lng={144.9631} zoom={15} title="BAI Business Hub" />
+        <Map lat={-38.0776} lng={145.2498} zoom={16} title="BAI Business Hub" />
       </div>
     </div>
   </div>

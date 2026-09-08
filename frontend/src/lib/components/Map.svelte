@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
 
-  export let lat: number = -37.8136;
-  export let lng: number = 144.9631;
+  export let lat: number = -38.0776;
+  export let lng: number = 145.2498;
   export let zoom: number = 15;
   export let title: string = 'BAI Business Hub';
 
