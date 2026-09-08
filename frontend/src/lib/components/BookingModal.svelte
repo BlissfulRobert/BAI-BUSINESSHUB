@@ -13,6 +13,8 @@
     getFreeHourCount,
     getSeriesDates,
     getWeeklySeriesDates,
+    getMonthlySeriesDates,
+    minutesToTime,
     rangesOverlap,
   } from "$lib/utils/dates";
   import { formatDate, getRoomImage, formatCurrency } from "$lib/utils/format";
@@ -59,6 +61,19 @@
   // prompted to log in / register at the details step before continuing.
   $: isGuest = !$user;
 
+  // A Full-day or Half-day pass may book around hours another guest already
+  // holds: those hours are "excluded" from the pass once the member
+  // acknowledges them. Acknowledgment happens in a dedicated pop-up modal shown
+  // when the member hits Continue (step 1 for full-day, step 2 for half-day),
+  // so the warning is impossible to miss.
+  let acknowledgedExclusions = false;
+  let showExclusionModal = false;
+  // Whether acknowledging the pop-up should advance a step. True when the
+  // pop-up intercepted a Continue press (full-day step 1, half-day step 2 via
+  // Continue); false when it appeared right after an end time was picked on
+  // step 2, where the member still has form fields to fill in.
+  let exclusionModalAdvances = false;
+
   // Keep the readonly details fields in sync with the signed-in profile. This
   // covers the case where a guest logs in/registers mid-booking: the saved
   // draft's name/email/phone are empty, and $profile may not have loaded yet
@@ -71,27 +86,74 @@
 
   // Validity gates for moving forward — each step only needs what it shows,
   // so every step fits the viewport without scrolling.
+  //
+  // Exclusion flow: full-day fixes its time to 9–7 at step 1, so the pop-up
+  // fires there; half-day picks start/end on step 2, so it fires there. Either
+  // way the member must acknowledge the held hours before continuing, and a
+  // range that is entirely swallowed by other guests' bookings can't proceed.
+  $: ackNeeded =
+    exclusionEligiblePlan &&
+    selectedDate &&
+    !!startTime &&
+    !!endTime &&
+    pendingExclusions.length > 0 &&
+    !selectionCovered;
   $: canContinue1 = !!selectedPlan && !!selectedDate;
+  // The acknowledgement is NOT a hard gate here — Continue stays clickable so
+  // nextStep() can intercept and raise the pop-up (same as full-day on step 1).
+  // ackNeeded && !acknowledgedExclusions just flips the pop-up on.
   $: canContinue2 =
     !!startTime &&
     !!endTime &&
     guestName.trim().length > 0 &&
-    guestEmail.trim().length > 0;
+    guestEmail.trim().length > 0 &&
+    !selectionCovered;
   const lastStep = 3;
 
   // Friendly hints shown instead of a silently-disabled "Continue" button.
   $: step1Hints = [
     !selectedPlan ? "Select a plan to continue." : "",
     !selectedDate ? "Select a date to continue." : "",
+    isFullDayPlan && selectionCovered
+      ? "This day is fully booked by other guests — pick another date."
+      : "",
   ].filter(Boolean);
   $: step2Hints = [
     !startTime ? "Choose a start time." : "",
     !endTime ? "Choose an end time." : "",
     !guestName.trim() ? "Enter your name." : "",
     !guestEmail.trim() ? "Enter your email." : "",
+    isHalfDayPlan && selectionCovered
+      ? "The time you picked is fully booked by other guests — choose a different range."
+      : "",
+    ackNeeded && !acknowledgedExclusions
+      ? "Confirm the missing hour(s) to continue."
+      : "",
   ].filter(Boolean);
 
+  // The step that owns the time selection for the chosen plan: full-day, weekly
+  // and monthly keep the whole business day fixed (9–7), so the acknowledgement
+  // fires once a date is chosen on step 1; half-day picks start/end on step 2.
+  $: exclusionTriggerStep =
+    isFullDayPlan || isWeeklyPlan || isMonthlyPlan
+      ? 1
+      : isHalfDayPlan
+        ? 2
+        : 0;
+
   function nextStep() {
+    // If another guest holds part of the chosen window, intercept before
+    // advancing and surface the acknowledgement pop-up instead — the member
+    // must explicitly agree to lose that hour before continuing.
+    if (
+      step === exclusionTriggerStep &&
+      ackNeeded &&
+      !acknowledgedExclusions
+    ) {
+      exclusionModalAdvances = true;
+      showExclusionModal = true;
+      return;
+    }
     if (step < lastStep) {
       step += 1;
       // Refresh availability on reaching the time picker (so grey-outs are
@@ -101,6 +163,24 @@
         loadBookings();
       }
     }
+  }
+
+  function acknowledgeExclusionsAndContinue() {
+    acknowledgedExclusions = true;
+    showExclusionModal = false;
+    if (exclusionModalAdvances) {
+      exclusionModalAdvances = false;
+      if (step < lastStep) {
+        step += 1;
+        if ((step === 2 || step === 3) && room) {
+          loadBookings();
+        }
+      }
+    }
+  }
+
+  function dismissExclusionModal() {
+    showExclusionModal = false;
   }
 
   function prevStep() {
@@ -117,6 +197,17 @@
       step = target;
       if (target === 2 && room) loadBookings();
     } else if (target === step + 1 && target <= lastStep) {
+      // Jumping forward off the exclusion step must not skip the
+      // acknowledgement — intercept like nextStep does.
+      if (
+        step === exclusionTriggerStep &&
+        ackNeeded &&
+        !acknowledgedExclusions
+      ) {
+        exclusionModalAdvances = true;
+        showExclusionModal = true;
+        return;
+      }
       step = target;
     }
   }
@@ -129,21 +220,221 @@
 
   $: isSeriesPlan =
     selectedPlan?.slug === "weekly" || selectedPlan?.slug === "monthly";
-  // Full-day and weekly passes cover the whole business day, so their time is
-  // fixed to 9 AM – 5 PM and the time selectors are hidden.
+  // Full-day, weekly and monthly passes cover the whole business day, so their
+  // time is fixed to 9 AM – 7 PM and the time selectors are hidden (the member
+  // picks only a date — a month pass runs the full day it's active).
   $: fixedTimePlan =
-    selectedPlan?.slug === "full-day" || selectedPlan?.slug === "weekly";
+    selectedPlan?.slug === "full-day" ||
+    selectedPlan?.slug === "weekly" ||
+    selectedPlan?.slug === "monthly";
+  $: isFullDayPlan = selectedPlan?.slug === "full-day";
+  $: isHalfDayPlan = selectedPlan?.slug === "half-day";
+  $: isWeeklyPlan = selectedPlan?.slug === "weekly";
+  $: isMonthlyPlan = selectedPlan?.slug === "monthly";
+
+  // Plans allowed to book around hours another guest already holds. Hourly
+  // stays a hard block (a 30/60-minute block with carved-out minutes is nearly
+  // never useful).
+  $: exclusionEligiblePlan =
+    isFullDayPlan || isHalfDayPlan || isWeeklyPlan || isMonthlyPlan;
+  // Plans whose price is reduced by excluded hours. Weekly/Monthly are flat
+  // rates, so exclusions shrink their usable time but never their fee.
+  $: exclusionBilledPlan = isFullDayPlan || isHalfDayPlan;
 
   // Auto-fill 9 AM – 7 PM for fixed-time plans once a date is picked.
   $: if (fixedTimePlan && selectedDate) {
     startTime = "09:00";
     endTime = "19:00";
   }
+
+  // Minutes a single booking genuinely holds. A full-day pass with its own
+  // recorded excluded_ranges does NOT hold those hours — they belonged to a
+  // third guest instead — so they are carved out before unioning.
+  function heldRanges(booking: Booking): [number, number][] {
+    const start = timeToMinutes(booking.start_time);
+    const end = timeToMinutes(booking.end_time);
+    const exclusions = (booking.excluded_ranges ?? [])
+      .map(
+        (r) => [timeToMinutes(r.start_time), timeToMinutes(r.end_time)] as [
+          number,
+          number,
+        ],
+      )
+      .sort((a, b) => a[0] - b[0]);
+
+    if (exclusions.length === 0) return [[start, end]];
+
+    const held: [number, number][] = [];
+    let cursor = start;
+    for (const [es, ee] of exclusions) {
+      if (cursor < es) held.push([cursor, Math.min(es, end)]);
+      cursor = Math.max(cursor, ee);
+    }
+    if (cursor < end) held.push([cursor, end]);
+    return held.length > 0 ? held : [[start, end]];
+  }
+
+  // Merge a list of bookings into minimal ["HH:MM:SS", "HH:MM:SS"] ranges of
+  // the hours they genuinely hold (start/end minus each booking's own
+  // exclusions), clipped to the [startMin, endMin] window the caller asked for.
+  function mergedTimeRangesIn(
+    startMin: number,
+    endMin: number,
+    bookings: Booking[],
+  ): { start_time: string; end_time: string }[] {
+    const ranges = bookings
+      .flatMap(heldRanges)
+      .map(
+        ([s, e]) =>
+          [Math.max(s, startMin), Math.min(e, endMin)] as [number, number],
+      )
+      .filter(([s, e]) => s < e)
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const merged: [number, number][] = [];
+    for (const [start, end] of ranges) {
+      const last = merged[merged.length - 1];
+      if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+      else merged.push([start, end]);
+    }
+    return merged.map(([start, end]) => ({
+      start_time: minutesToTime(start),
+      end_time: minutesToTime(end),
+    }));
+  }
+
+  // Hours another guest already holds inside the chosen window, per date: the
+  // whole 9–7 day for full-day co-owner/weekly, the picked start–end for
+  // half-day. These are "excluded" — the member acknowledges them and the
+  // booking goes ahead without that time. Weekly may span several dates, so the
+  // hold is tracked for every date in the series; single-date plans key on the
+  // selected date only.
+  $: pendingExclusionsByDate = (() => {
+    const hasBlockingBookings =
+      !!bookingsByDate && Object.keys(bookingsByDate).length > 0;
+    const theSelectedDate = selectedDate;
+    const theEligible = exclusionEligiblePlan;
+    const theStart = startTime;
+    const theEnd = endTime;
+    const theSeriesDates = seriesDates;
+    void [
+      hasBlockingBookings,
+      theSelectedDate,
+      theEligible,
+      theStart,
+      theEnd,
+      theSeriesDates,
+    ];
+
+    if (!exclusionEligiblePlan || !selectedDate || !startTime || !endTime)
+      return {} as Record<string, { start_time: string; end_time: string }[]>;
+    const startMin = timeToMinutes(startTime);
+    const endMin = timeToMinutes(endTime);
+    const result: Record<string, { start_time: string; end_time: string }[]> =
+      {};
+    for (const date of relevantDays()) {
+      const ranges = mergedTimeRangesIn(
+        startMin,
+        endMin,
+        bookingsByDate[date] ?? [],
+      );
+      if (ranges.length > 0) result[date] = ranges;
+    }
+    return result;
+  })();
+
+  // Flat list across every affected date, for gating (ackNeeded) and the
+  // single-date display paths.
+  $: pendingExclusions = Object.values(pendingExclusionsByDate).flat();
+
+  // Total minutes of the chosen window that are unavailable to the pass-holder.
+  $: excludedMinutes = pendingExclusions.reduce(
+    (total, r) =>
+      total + (timeToMinutes(r.end_time) - timeToMinutes(r.start_time)),
+    0,
+  );
+
+  // Total minutes the pass-holder picks (window minus exclusions). Falls back
+  // to the whole business day before times are chosen (step 1 full-day view).
+  $: selectedMinutes = (() => {
+    if (!startTime || !endTime)
+      return (HUB_CLOSE_HOUR - HUB_OPEN_HOUR) * 60;
+    return timeToMinutes(endTime) - timeToMinutes(startTime);
+  })();
+
+  // Dates whose entire requested window is gone (every minute is excluded) —
+  // e.g. a full day swallowed by another guest.
+  $: coveredByDate = (() => {
+    const result: Record<string, boolean> = {};
+    if (!exclusionEligiblePlan || selectedMinutes <= 0) return result;
+    for (const [date, ranges] of Object.entries(pendingExclusionsByDate)) {
+      const covered = ranges.reduce(
+        (total, r) =>
+          total + (timeToMinutes(r.end_time) - timeToMinutes(r.start_time)),
+        0,
+      );
+      result[date] = covered >= selectedMinutes;
+    }
+    return result;
+  })();
+
+  // Human-readable per-date lines for the warning pop-up and amber notes:
+  // For series passes (weekly/monthly) each affected day gets its own line —
+  // "12 Jan: 9:00 AM–10:00 AM, 1:00 PM–2:00 PM" with fully-booked days called
+  // out as such. Single-date plans keep the date-less range list.
+  $: exclusionSummaryLines = (() => {
+    if (!isSeriesPlan) {
+      return pendingExclusions.length > 0
+        ? [formatTimeRangeList(pendingExclusions)]
+        : [];
+    }
+    return Object.entries(pendingExclusionsByDate).map(([date, ranges]) =>
+      coveredByDate[date]
+        ? `${formatDate(date)}: fully booked`
+        : `${formatDate(date)}: ${formatTimeRangeList(ranges)}`,
+    );
+  })();
+
+  // A window with every minute excluded leaves nothing to offer. For a series
+  // (weekly/monthly) a fully-booked single day is merely an excluded day (the
+  // rest of the range remains bookable), so only single-date plans can be
+  // "covered".
+  $: selectionCovered =
+    !isSeriesPlan &&
+    selectedMinutes > 0 &&
+    coveredByDate[selectedDate] === true;
+
+  // True when every blocking booking overlapping the chosen window is covered
+  // by an exclusion, so an eligible pass can proceed (server re-verifies).
+  // Used for the submit-time re-check.
+  function selectionConflictsCovered(): boolean {
+    if (!exclusionEligiblePlan || !selectedDate) return false;
+    if (!startTime || !endTime) return false;
+    const startMin = timeToMinutes(startTime);
+    const endMin = timeToMinutes(endTime);
+    return relevantDays().every((date) => {
+      const dayBookings = bookingsByDate[date] ?? [];
+      const exclusions = mergedTimeRangesIn(startMin, endMin, dayBookings);
+      return !dayBookings.some((b) => {
+        const bStart = timeToMinutes(b.start_time);
+        const bEnd = timeToMinutes(b.end_time);
+        if (!rangesOverlap(startMin, endMin, bStart, bEnd)) return false;
+        const clipS = Math.max(bStart, startMin);
+        const clipE = Math.min(bEnd, endMin);
+        return !exclusions.some(
+          (r) =>
+            timeToMinutes(r.start_time) <= clipS &&
+            timeToMinutes(r.end_time) >= clipE,
+        );
+      });
+    });
+  }
   $: seriesDates =
     selectedPlan && selectedDate
       ? selectedPlan.slug === "weekly"
         ? getWeeklySeriesDates(selectedDate, bookingsByDate)
-        : getSeriesDates(selectedDate, selectedPlan)
+        : selectedPlan.slug === "monthly"
+          ? getMonthlySeriesDates(selectedDate, bookingsByDate)
+          : getSeriesDates(selectedDate, selectedPlan)
       : [];
 
   // All 1-hour blocks for the selected (start) date plus whether each one is
@@ -159,30 +450,50 @@
     : 0;
 
   // Fetch this room's blocking bookings so the modal's calendar reflects real
-  // availability (mirrors the room page's server query). If the anon key can't
-  // read bookings (RLS), this silently leaves the calendar without booked-day
-  // dots — the range highlight + banner still work.
+  // availability. The browser's direct table read is RLS-restricted to the
+  // caller's own bookings, so the modal prefers the server-backed helper
+  // (get_room_blocking_bookings, SECURITY DEFINER) which returns every
+  // pending/paid/completed booking for the room while skipping the caller's
+  // own — your own holds must never look like hours "someone else took" from a
+  // full-day pass. The plain query remains as a fallback for guests (who can't
+  // call the helper) and for databases where the migration hasn't run yet.
   async function loadBookings() {
     if (!room) {
       bookingsByDate = {};
       return;
     }
     const today = new Date().toISOString().split("T")[0];
-    const { data } = await supabase
-      .from("bookings")
-      .select(
-        "id, room_id, user_id, plan_id, date, start_time, end_time, status",
-      )
-      .eq("room_id", room.id)
-      .gte("date", today)
-      .in("status", BLOCKING_STATUSES);
 
-    bookingsByDate = ((data ?? []) as Booking[]).reduce<
-      Record<string, Booking[]>
-    >((acc, b) => {
-      (acc[b.date] ??= []).push(b);
-      return acc;
-    }, {});
+    let data: Booking[] | null = null;
+    try {
+      const { data: rpcData, error } = await supabase.rpc(
+        "get_room_blocking_bookings",
+        {
+          p_room_id: room.id,
+          p_from_date: today,
+        },
+      );
+      if (error) throw error;
+      data = (rpcData ?? []) as Booking[];
+    } catch {
+      let query = supabase
+        .from("bookings")
+        .select("id, room_id, user_id, plan_id, date, start_time, end_time, status, excluded_ranges")
+        .eq("room_id", room.id)
+        .gte("date", today)
+        .in("status", BLOCKING_STATUSES);
+      if ($user?.id) query = query.neq("user_id", $user.id);
+      const { data: fallback } = await query;
+      data = (fallback ?? []) as Booking[];
+    }
+
+    bookingsByDate = (data ?? []).reduce<Record<string, Booking[]>>(
+      (acc, b) => {
+        (acc[b.date] ??= []).push(b);
+        return acc;
+      },
+      {},
+    );
   }
 
   // ---- Live availability sync ---------------------------------------------
@@ -360,19 +671,20 @@
     return hours * 60 + minutes;
   }
 
-  function minutesToTime(minutes: number): string {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-
-    return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-  }
-
   function formatDisplayTime(time: string): string {
     if (!time) return "";
 
     const [hours, minutes] = time.split(":").map(Number);
 
     return formatTime(hours, minutes);
+  }
+
+  function formatTimeRangeList(
+    ranges: { start_time: string; end_time: string }[],
+  ): string {
+    return ranges
+      .map((r) => `${formatDisplayTime(r.start_time)}\u2013${formatDisplayTime(r.end_time)}`)
+      .join(", ");
   }
 
   function getTimeValue(displayTime: string): string {
@@ -422,24 +734,174 @@
     return `The time you picked (${formatDate(selectedDate)}, ${window}) was just booked by someone else. Slots are first come, first served \u2014 please pick another time.`;
   }
 
-  // Start times that are fully booked (that exact starting hour is unavailable).
-  $: bookedStarts = new Set(
-    timeSlots
-      .filter((time) => {
-        const start = timeToMinutes(getTimeValue(time));
-        // A single hour is the shortest bookable increment, so check the range.
-        return isSlotBooked(start, start + 60);
-      })
-      .map(getTimeValue),
-  );
-
-  // End time must always be after start time, and must not create a range that
-  // overlaps an existing booking.
-  // For the Hourly plan the member can only book a 30-minute or 1-hour block,
-  // so the end options are limited to start +30min and start +60min.
+  // The Hourly plan only allows a 30-minute or 1-hour block, so its end options
+  // are limited to start +30min and start +60min. Used by the end picker below.
   $: isHourlyPlan = selectedPlan?.slug === "hourly";
+
+  const closeMin = HUB_CLOSE_HOUR * 60;
+
+  // Maximum minutes a booking can span for the chosen plan. The plan duration
+  // is a CAP, not a fixed block — end times are chosen freely below and pricing
+  // bills the actual hours used — so a start slot only needs SOME usable end
+  // time, not the plan's full stated duration. Weekly/Monthly cover the whole
+  // business day, so their block is capped at one business day rather than
+  // their raw (40h/176h) duration.
+  $: planBlockMinutes = !selectedPlan
+    ? 60
+    : selectedPlan.slug === "weekly" || selectedPlan.slug === "monthly"
+      ? closeMin - HUB_OPEN_HOUR * 60
+      : selectedPlan.duration_hours * 60;
+
+  // The date(s) a chosen time must be free on.
+  function relevantDays(): string[] {
+    return isSeriesPlan && seriesDates.length > 0
+      ? seriesDates
+      : selectedDate
+        ? [selectedDate]
+        : [];
+  }
+
+  // A candidate END time is usable for a half-day pass when it doesn't fall
+  // within another guest's block AND the resulting window still has usable
+  // minutes. Blocks are carved out (excluded) rather than hard-blocking: e.g.
+  // with 1–2 PM already booked, a 10 AM start may still end at 2 PM or later —
+  // the 1–2 PM hour is simply excluded from the pass.
+  //
+  // Any start/end time that lands within a held block (its start boundary
+  // included) is greyed as booked so the pickers show exactly which hours are
+  // taken — 1:00 PM and 1:30 PM for a 1–2 PM hold — while 2 PM onward remains
+  // selectable. Ends may additionally land on a block's far boundary.
+  function endUsableForExclusionPlan(
+    bookings: Booking[],
+    startMin: number,
+    endMin: number,
+  ): boolean {
+    if (endMin - startMin <= 0) return false;
+    if (
+      bookings.some(
+        (b) =>
+          startMin >= timeToMinutes(b.start_time) &&
+          startMin < timeToMinutes(b.end_time),
+      )
+    )
+      return false;
+    if (
+      bookings.some(
+        (b) =>
+          endMin >= timeToMinutes(b.start_time) &&
+          endMin < timeToMinutes(b.end_time),
+      )
+    )
+      return false;
+    const exclusions = mergedTimeRangesIn(startMin, endMin, bookings);
+    const covered = exclusions.reduce(
+      (total, r) =>
+        total + (timeToMinutes(r.end_time) - timeToMinutes(r.start_time)),
+      0,
+    );
+    return covered < endMin - startMin;
+  }
+
+  // True if there is at least one valid end time after `startMin` — an hourly
+  // end slot within business hours, no later than start + plan duration — that
+  // doesn't overlap a blocking booking on every relevant day. Mirrors the end
+  // picker so a start time is only disabled when it genuinely can't be used:
+  // e.g. a Half-day pass may start at 4 PM and end at 7 PM, even though
+  // start + plan duration would run past closing.
+  function hasFreeEnd(startMin: number): boolean {
+    const days = relevantDays();
+    const maxEnd = Math.min(closeMin, startMin + planBlockMinutes);
+    if (maxEnd <= startMin) return false;
+    return timeSlots.some((time) => {
+      const end = timeToMinutes(getTimeValue(time));
+      if (end <= startMin || end > maxEnd) return false;
+      return days.every((date) => {
+        const books = bookingsByDate[date] ?? [];
+
+        // Half-day and monthly passes may span an existing block (it gets
+        // excluded); a start slot is usable as soon as one usable end exists
+        // afterward on every day of the range.
+        if (isHalfDayPlan || isMonthlyPlan) {
+          return endUsableForExclusionPlan(books, startMin, end);
+        }
+
+        const conflicts = books.some((b) =>
+          rangesOverlap(
+            startMin,
+            end,
+            timeToMinutes(b.start_time),
+            timeToMinutes(b.end_time),
+          ),
+        );
+        return !conflicts;
+      });
+    });
+  }
+
+  // Start times that are unavailable, plus the reason shown beside each:
+  // "After closing" when no block can fit before the hub closes, "Booked"
+  // when every possible end time overlaps an existing booking. Free times stay
+  // selectable even if the plan's full stated duration wouldn't fit before
+  // closing — the end time is chosen freely within business hours.
+  //
+  // NOTE: we must read `bookingsByDate`, `selectedDate`, `isSeriesPlan` and
+  // `seriesDates` here directly so Svelte's reactive compiler tracks them as
+  // dependencies. They're the values actually used (via hasFreeEnd) to decide
+  // availability, and without an explicit reference the block would not re-run
+  // when booking data or the chosen date changes.
+  $: startSlotStatus = (() => {
+    const hasBlockingBookings =
+      !!bookingsByDate && Object.keys(bookingsByDate).length > 0;
+    const theSelectedDate = selectedDate;
+    const theIsSeriesPlan = isSeriesPlan;
+    const theSeriesDates = seriesDates;
+    const theIsHalfDayPlan = isHalfDayPlan;
+    const theIsMonthlyPlan = isMonthlyPlan;
+    const thePlanBlockMinutes = planBlockMinutes;
+    void [
+      hasBlockingBookings,
+      theSelectedDate,
+      theIsSeriesPlan,
+      theSeriesDates,
+      theIsHalfDayPlan,
+      theIsMonthlyPlan,
+      thePlanBlockMinutes,
+    ];
+
+    const statusByValue = new Map<string, string>();
+    for (const time of timeSlots) {
+      const value = getTimeValue(time);
+      const start = timeToMinutes(value);
+      if (start >= closeMin) {
+        statusByValue.set(value, "After closing");
+      } else if (!hasFreeEnd(start)) {
+        statusByValue.set(value, "Booked");
+      }
+    }
+    return statusByValue;
+  })();
+
   $: availableEndTimes = (() => {
     if (!startTime) return [];
+
+    // Same explicit-dependency trick as startSlotStatus: read the booking/date
+    // state so Svelte re-runs this when availability changes.
+    const hasBlockingBookings =
+      !!bookingsByDate && Object.keys(bookingsByDate).length > 0;
+    const theSelectedDate = selectedDate;
+    const theIsSeriesPlan = isSeriesPlan;
+    const theSeriesDates = seriesDates;
+    const theIsHalfDayPlan = isHalfDayPlan;
+    const theIsMonthlyPlan = isMonthlyPlan;
+    void [
+      hasBlockingBookings,
+      theSelectedDate,
+      theIsSeriesPlan,
+      theSeriesDates,
+      theIsHalfDayPlan,
+      theIsMonthlyPlan,
+    ];
+
     const start = timeToMinutes(startTime);
 
     if (isHourlyPlan) {
@@ -459,6 +921,30 @@
         );
     }
 
+    // Half-day and monthly pick free start/end times; a chosen range may span an
+    // existing block (it gets excluded), so an end is greyed only when it falls
+    // inside a held block or leaves no usable minutes on ANY day of the range.
+    if ((isHalfDayPlan || isMonthlyPlan) && selectedDate) {
+      return timeSlots
+        .filter((time) => getTimeValue(time) > startTime)
+        .map((time) => {
+          const endValue = getTimeValue(time);
+          const usable = relevantDays().every((date) =>
+            endUsableForExclusionPlan(
+              bookingsByDate[date] ?? [],
+              start,
+              timeToMinutes(endValue),
+            ),
+          );
+          return {
+            time,
+            endValue,
+            booked: !usable,
+            hint: undefined,
+          };
+        });
+    }
+
     return timeSlots
       .filter((time) => getTimeValue(time) > startTime)
       .map((time) => {
@@ -472,22 +958,50 @@
       });
   })();
 
-  // Duration between start and end.
+  // Duration between start and end. For a pass with excluded hours, the hours
+  // another guest holds are subtracted — e.g. 10 AM–7 PM full-day with 10–11 AM
+  // taken shows "9 hours".
   $: bookingDuration =
-    startTime && endTime ? calculateDuration(startTime, endTime) : "";
+    startTime && endTime
+      ? formatDuration(
+          timeToMinutes(endTime) -
+            timeToMinutes(startTime) -
+            (exclusionBilledPlan ? excludedMinutes : 0),
+        )
+      : "";
 
-  // Live price quote based on room, plan, and selected times.
+  // Plan chip text in the header/summary — also shows the reduced hours when a
+  // pass had part of the window excluded.
+  $: selectedPlanLabel = selectedPlan
+    ? exclusionBilledPlan && excludedMinutes > 0
+      ? `${selectedPlan.name} · ${formatDuration(
+          selectedMinutes - excludedMinutes,
+        )}`
+      : `${selectedPlan.name} · ${selectedPlan.duration_label}`
+    : "";
+
+  // Live price quote based on room, plan, and selected times. For a pass with
+  // excluded hours, the hours another guest already holds are removed, so the
+  // fee is based on the hours that remain usable.
   $: quote =
     room && startTime && endTime
-      ? quoteForBooking(room, selectedPlan, startTime, endTime)
+      ? quoteForBooking(
+          room,
+          selectedPlan,
+          startTime,
+          endTime,
+          exclusionBilledPlan ? excludedMinutes : 0,
+        )
       : null;
 
-  function calculateDuration(start: string, end: string): string {
-    const startMinutes = timeToMinutes(start);
-    const endMinutes = timeToMinutes(end);
+  // The same window priced WITHOUT exclusions, to show the saving in the pop-up
+  // (e.g. "Fee for the remaining hours: $315 [struck-through $350]").
+  $: fullDayFullPriceQuote =
+    room && selectedPlan && startTime && endTime
+      ? quoteForBooking(room, selectedPlan, startTime, endTime, 0)
+      : null;
 
-    const difference = endMinutes - startMinutes;
-
+  function formatDuration(difference: number): string {
     if (difference <= 0) return "";
 
     const hours = Math.floor(difference / 60);
@@ -507,12 +1021,46 @@
   function selectStartTime(value: string) {
     startTime = value;
     endTime = "";
+    acknowledgedExclusions = false;
     startOpen = false;
   }
 
   function selectEndTime(value: string) {
     endTime = value;
+    acknowledgedExclusions = false;
     endOpen = false;
+
+    // Half-day/monthly: the instant the picked end spans an hour another guest
+    // holds, raise the same "Unavailable to you" pop-up full-day shows —
+    // computed here directly because the reactive values haven't flushed within
+    // this handler. For a monthly series, any affected day in the range counts.
+    if (
+      (isHalfDayPlan || isMonthlyPlan) &&
+      selectedDate &&
+      startTime
+    ) {
+      const startMin = timeToMinutes(startTime);
+      const endMin = timeToMinutes(value);
+      if (endMin > startMin) {
+        const hasExclusion = relevantDays().some((date) => {
+          const exclusions = mergedTimeRangesIn(
+            startMin,
+            endMin,
+            bookingsByDate[date] ?? [],
+          );
+          const covered = exclusions.reduce(
+            (total, r) =>
+              total + (timeToMinutes(r.end_time) - timeToMinutes(r.start_time)),
+            0,
+          );
+          return exclusions.length > 0 && covered < endMin - startMin;
+        });
+        if (hasExclusion) {
+          exclusionModalAdvances = false;
+          showExclusionModal = true;
+        }
+      }
+    }
   }
 
   function selectPlan(plan: Plan) {
@@ -522,6 +1070,7 @@
     selectedDate = "";
     startTime = "";
     endTime = "";
+    acknowledgedExclusions = false;
   }
 
   function close() {
@@ -541,6 +1090,7 @@
     errorMessage = "";
     showConfirmation = false;
     bookingReference = "";
+    acknowledgedExclusions = false;
 
     step = 1;
   }
@@ -666,20 +1216,24 @@
     // time step so they can pick an open slot.
     const startMin = timeToMinutes(startTime);
     const endMin = timeToMinutes(endTime);
-    const stillFree = isSeriesPlan
-      ? !seriesDates.some((d) =>
-          (bookingsByDate[d] ?? []).some((b) =>
-            rangesOverlap(
-              startMin,
-              endMin,
-              timeToMinutes(b.start_time),
-              timeToMinutes(b.end_time),
+    const stillFree = exclusionEligiblePlan
+      ? selectionConflictsCovered()
+      : isSeriesPlan
+        ? !seriesDates.some((d) =>
+            (bookingsByDate[d] ?? []).some((b) =>
+              rangesOverlap(
+                startMin,
+                endMin,
+                timeToMinutes(b.start_time),
+                timeToMinutes(b.end_time),
+              ),
             ),
-          ),
-        )
-      : !isSlotBooked(startMin, endMin);
+          )
+        : !isSlotBooked(startMin, endMin);
     if (!stillFree) {
-      errorMessage = slotConflictMessage();
+      errorMessage = exclusionEligiblePlan
+        ? "Another guest just booked time on this day. Please review the updated hours and confirm again."
+        : slotConflictMessage();
       gotoStep(2);
       loadBookings();
       return;
@@ -722,6 +1276,18 @@
           start_time: startTime,
           end_time: endTime,
 
+          // A pass with excluded hours acknowledges the hours already held by other
+          // guests; every other plan sends an empty list. Weekly/Monthly span
+          // several dates, so their exclusions are sent per date.
+          excluded_ranges: isSeriesPlan
+            ? []
+            : exclusionEligiblePlan
+              ? pendingExclusions
+              : [],
+          ...(isSeriesPlan
+            ? { excluded_ranges_by_date: pendingExclusionsByDate }
+            : {}),
+
           guest_name: guestName.trim(),
           guest_email: guestEmail.trim(),
           guest_phone: guestPhone.trim() || null,
@@ -736,8 +1302,11 @@
           // The slot was claimed between the client check and the server
           // insert (race). Refresh availability so the now-taken slot renders
           // as booked, and return the user to the time step to pick another.
-          errorMessage = slotConflictMessage();
+          errorMessage = exclusionEligiblePlan
+            ? result.message || slotConflictMessage()
+            : slotConflictMessage();
           loadBookings();
+          acknowledgedExclusions = false;
           gotoStep(2);
           submitting = false;
           return;
@@ -798,7 +1367,7 @@
         <span
           class="rounded-full bg-primary-100 px-3 py-1 text-xs text-primary-800"
         >
-          {selectedPlan.name} · {selectedPlan.duration_label}
+          {selectedPlanLabel}
         </span>
       {/if}
     </div>
@@ -864,7 +1433,7 @@
         <span class="inline-flex items-center gap-1.5">
           <span class="h-1.5 w-1.5 rounded-full bg-primary-500"></span>
           {#if selectedPlan}
-            {selectedPlan.name} · {selectedPlan.duration_label}
+            {selectedPlanLabel}
           {:else}
             No plan selected yet
           {/if}
@@ -886,6 +1455,11 @@
         <span>{errorMessage}</span>
       </div>
     {/if}
+
+    <!-- Full-day pass exclusions are surfaced in a dedicated pop-up modal
+         (see the overlay at the bottom of this component) the moment the
+         member hits Continue on step 1, so the missing-hour warning is
+         impossible to miss. -->
 
     <!-- STEP 1: Plan & Date -->
     {#if step === 1}
@@ -949,6 +1523,7 @@
             lookaheadDays={CALENDAR_LOOKAHEAD_DAYS}
             on:selectDate={(e) => {
               selectedDate = e.detail;
+              acknowledgedExclusions = false;
               // Freshen the preview/count the moment a day is picked so it
               // reflects any booking made since the last refresh.
               loadBookings();
@@ -1022,7 +1597,7 @@
                 class="flex flex-wrap items-baseline gap-x-2 text-sm text-dark-600"
               >
                 <span class="font-medium">
-                  {selectedPlan?.slug === "weekly"
+                  {isWeeklyPlan || isMonthlyPlan
                     ? "Weekdays"
                     : "Daily block"}:
                 </span>
@@ -1032,9 +1607,11 @@
                   )}
                 </span>
                 <span class="text-dark-500">
-                  ({seriesDates.length} days{selectedPlan?.slug === "weekly"
-                    ? " · Mon\u2013Fri"
-                    : ""})
+                  ({seriesDates.length} days{isWeeklyPlan
+                    ? " · Mon–Fri"
+                    : isMonthlyPlan
+                      ? " · weekdays"
+                      : ""})
                 </span>
               </p>
               <p class="mt-0.5 text-xs text-dark-500">
@@ -1082,6 +1659,36 @@
               <span class="font-semibold text-dark-900">
                 {formatDisplayTime(startTime)} – {formatDisplayTime(endTime)}
               </span>.
+
+              {#if pendingExclusions.length > 0}
+                <div
+                  class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800"
+                >
+                  <p class="font-semibold">Unavailable to you:</p>
+                  <ul class="mt-1 space-y-0.5">
+                    {#each exclusionSummaryLines as line}
+                      <li>• {line}</li>
+                    {/each}
+                  </ul>
+                  <p class="mt-1">
+                    — already booked by another guest, so you can't use the room
+                    during that time.
+                  </p>
+                  {#if !acknowledgedExclusions}
+                    <label
+                      class="mt-2 flex cursor-pointer items-start gap-2 font-medium"
+                    >
+                      <input
+                        type="checkbox"
+                        bind:checked={acknowledgedExclusions}
+                        class="mt-px accent-amber-600"
+                      />
+                      I understand this time is booked and give it up — proceed
+                      anyway.
+                    </label>
+                  {/if}
+                </div>
+              {/if}
             </div>
           {:else}
             <div class="grid grid-cols-1 gap-4">
@@ -1126,18 +1733,21 @@
                     >
                       {#each timeSlots as time}
                         {@const value = getTimeValue(time)}
-                        {@const booked = bookedStarts.has(value)}
+                        {@const status = startSlotStatus.get(value) ?? ""}
                         <button
                           type="button"
                           class="block w-full px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:bg-dark-100/70 disabled:text-dark-300 disabled:line-through disabled:hover:bg-transparent enabled:hover:bg-dark-50"
                           class:bg-primary-50={value === startTime}
-                          disabled={booked}
+                          disabled={!!status}
                           on:click={() => selectStartTime(value)}
                         >
                           {time}
-                          {#if booked}
-                            <span class="font-medium text-red-600"
-                              >(Booked)</span
+                          {#if status}
+                            <span
+                              class="ml-1 font-medium {status === 'Booked'
+                                ? 'text-red-600'
+                                : 'text-dark-400'}"
+                              >({status})</span
                             >
                           {/if}
                         </button>
@@ -1212,6 +1822,36 @@
                   {/if}
                 </div>
               </div>
+            </div>
+          {/if}
+
+          {#if isHalfDayPlan && pendingExclusions.length > 0}
+            <div
+              class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800"
+            >
+              <p class="font-semibold">Unavailable to you:</p>
+              <ul class="mt-1 space-y-0.5">
+                {#each exclusionSummaryLines as line}
+                  <li>• {line}</li>
+                {/each}
+              </ul>
+              <p class="mt-1">
+                — already booked by another guest, so you can't use the room
+                during that time. The rest of your time stays available.
+              </p>
+              {#if !acknowledgedExclusions}
+                <label
+                  class="mt-2 flex cursor-pointer items-start gap-2 font-medium"
+                >
+                  <input
+                    type="checkbox"
+                    bind:checked={acknowledgedExclusions}
+                    class="mt-px accent-amber-600"
+                  />
+                  I understand this time is booked and give it up — proceed
+                  anyway.
+                </label>
+              {/if}
             </div>
           {/if}
 
@@ -1427,9 +2067,20 @@
           </div>
           <div class="flex justify-between gap-4">
             <span class="text-dark-500">Time</span>
-            <span class="font-medium text-dark-900">
-              {formatDisplayTime(startTime)} – {formatDisplayTime(endTime)}
-            </span>
+            <div class="text-right">
+              <span class="font-medium text-dark-900">
+                {formatDisplayTime(startTime)} – {formatDisplayTime(endTime)}
+              </span>
+              {#if pendingExclusions.length > 0}
+                <p
+                  class="mt-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800"
+                >
+                  &#9888; Cannot use room:
+                  {exclusionSummaryLines.join(" \u00b7 ")} (booked by another
+                  guest)
+                </p>
+              {/if}
+            </div>
           </div>
           <div class="flex justify-between gap-4">
             <span class="text-dark-500">Duration</span>
@@ -1599,9 +2250,20 @@
           </div>
           <div class="flex justify-between gap-4">
             <span class="text-dark-500">Time</span>
-            <span class="font-medium text-dark-900">
-              {formatDisplayTime(startTime)} – {formatDisplayTime(endTime)}
-            </span>
+            <div class="text-right">
+              <span class="font-medium text-dark-900">
+                {formatDisplayTime(startTime)} – {formatDisplayTime(endTime)}
+              </span>
+              {#if pendingExclusions.length > 0}
+                <p
+                  class="mt-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800"
+                >
+                  &#9888; Cannot use room:
+                  {exclusionSummaryLines.join(" \u00b7 ")} (booked by another
+                  guest)
+                </p>
+              {/if}
+            </div>
           </div>
           {#if purpose}
             <div class="flex justify-between gap-4">
@@ -1621,3 +2283,123 @@
     {/if}
   {/if}
 </Modal>
+
+<!-- Pass exclusion pop-up — shown over the booking modal when the member tries
+     to continue while part of the requested time (full-day/day, half-day range,
+     or weekly series) is already held by another guest. -->
+
+{#if showExclusionModal && isOpen && exclusionEligiblePlan && selectedDate && pendingExclusions.length > 0}
+  <div
+    class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="exclusion-modal-title"
+  >
+    <div class="w-full max-w-md overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      <div class="flex items-start justify-between gap-3 border-b border-amber-200 bg-amber-50 px-5 py-4">
+        <h3
+          id="exclusion-modal-title"
+          class="flex items-center gap-2 text-sm font-bold text-amber-900"
+        >
+          <span aria-hidden="true" class="flex h-8 w-8 items-center justify-center rounded-full bg-amber-400/30 text-lg font-black text-amber-700">
+            !
+          </span>
+          {selectionCovered ? "No time available" : "Part of your time is already booked"}
+        </h3>
+        <button
+          type="button"
+          on:click={dismissExclusionModal}
+          class="rounded-lg p-1.5 text-amber-600 transition hover:bg-amber-100"
+          aria-label="Close"
+        >
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="space-y-4 px-5 py-5">
+        {#if selectionCovered}
+          <p class="text-sm text-dark-700">
+            {formatDate(selectedDate)}
+            {#if startTime && endTime}
+              , {formatDisplayTime(startTime)} – {formatDisplayTime(endTime)},
+            {/if}
+            is fully booked by other guests during your requested time — there's
+            nothing for your {selectedPlan?.name?.toLowerCase() ?? "pass"} to
+            offer here. Please pick another time.
+          </p>
+          <button
+            type="button"
+            class="btn-primary w-full justify-center"
+            on:click={dismissExclusionModal}
+          >
+            OK, pick another time
+          </button>
+        {:else}
+          <p class="text-sm font-medium text-dark-900">
+            {#if isSeriesPlan}
+              Some days in your {isWeeklyPlan ? "week" : "month"} are already
+              booked by other guests — that time won't be available to you in
+              the room.
+            {:else}
+              {formatTimeRangeList(pendingExclusions)} on
+              {formatDate(selectedDate)} is already booked by another guest —
+              that time won't be available to you on that day in the room.
+            {/if}
+          </p>
+          <p class="text-sm text-dark-700">
+            Would you still like to book your
+            {selectedPlan?.name?.toLowerCase() ?? "pass"}? The booked time will
+            be
+            <span class="font-semibold text-amber-800">excluded</span> from
+            your pass — you won't be able to use the room then. The days and
+            hours that are free remain yours.
+          </p>
+
+          <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <p class="font-semibold">Unavailable to you:</p>
+            <ul class="mt-1 space-y-0.5">
+              {#each exclusionSummaryLines as line}
+                <li>• {line}</li>
+              {/each}
+            </ul>
+            <p class="mt-1">
+              Your pass covers {formatDisplayTime(startTime)} –{" "}
+              {formatDisplayTime(endTime)}
+              {#if bookingDuration}
+                · Duration: <span class="font-semibold">{bookingDuration}</span>
+              {/if}
+            </p>
+            {#if fullDayFullPriceQuote && quote && quote.total !== fullDayFullPriceQuote.total}
+              <p class="mt-1">
+                Fee for the remaining hours:
+                <span class="font-semibold">{formatCurrency(quote.total)}</span>
+                <span class="line-through text-amber-500">
+                  {formatCurrency(fullDayFullPriceQuote.total)}
+                </span>
+              </p>
+            {/if}
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              class="btn-secondary px-4 py-2"
+              on:click={dismissExclusionModal}
+            >
+              Not now
+            </button>
+            <button
+              type="button"
+              class="btn-primary px-4 py-2"
+              on:click={acknowledgeExclusionsAndContinue}
+            >
+              I understand — proceed
+            </button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}

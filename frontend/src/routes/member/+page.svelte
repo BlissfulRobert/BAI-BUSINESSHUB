@@ -9,7 +9,13 @@
   import { quoteForStoredBooking, usageMeter } from '$lib/utils/pricing';
   import { groupBookings, dateRangeLabel } from '$lib/utils/booking-groups';
   import { safeKey, safeStringKey } from '$lib/utils/keys';
-  import { isWeekend } from '$lib/utils/dates';
+  import {
+    HUB_OPEN_HOUR,
+    HUB_CLOSE_HOUR,
+    isWeekend,
+    minutesToTime,
+    timeToMinutes,
+  } from '$lib/utils/dates';
   import { isVictorianHoliday } from '$lib/utils/holidays';
   import Modal from '$lib/components/Modal.svelte';
 
@@ -159,6 +165,37 @@
   function bookingOptionLabel(b: Booking): string {
   const number = b.booking_number ?? b.id.slice(0, 8);
   return `${number} \u2014 ${b.room?.name ?? 'Room'} \u00b7 ${formatDate(b.date)} \u00b7 ${formatTime(b.start_time)}-${formatTime(b.end_time)}`;
+  }
+
+  // Hours a full-day pass had to give up because another guest held them.
+  function exclusionLabel(ranges: { start_time: string; end_time: string }[]): string {
+    return ranges.map((r) => `${formatTime(r.start_time)}\u2013${formatTime(r.end_time)}`).join(', ');
+  }
+
+  // Business hours (9 AM – 7 PM) minus the excluded ranges -> the hours a
+  // full-day pass can actually use on that day, e.g. 10-11 excluded shows
+  // "9:00 AM–10:00 AM, 11:00 AM–7:00 PM".
+  function availableSegments(ranges: { start_time: string; end_time: string }[]): string {
+    if (!ranges || ranges.length === 0) return '';
+    const open = HUB_OPEN_HOUR * 60;
+    const close = HUB_CLOSE_HOUR * 60;
+    const excluded = ranges
+      .map((r) => [timeToMinutes(r.start_time), timeToMinutes(r.end_time)] as [number, number])
+      .filter(([s, e]) => e > open && s < close)
+      .map(([s, e]) => [Math.max(s, open), Math.min(e, close)] as [number, number])
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+    const free: [number, number][] = [];
+    let cursor = open;
+    for (const [s, e] of excluded) {
+      if (cursor < s) free.push([cursor, Math.min(s, close)]);
+      cursor = Math.max(cursor, e);
+    }
+    if (cursor < close) free.push([cursor, close]);
+
+    return free
+      .map(([s, e]) => `${formatTime(minutesToTime(s))}\u2013${formatTime(minutesToTime(e))}`)
+      .join(', ');
   }
 
   $: reportableBookings = bookings.slice().sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -663,6 +700,11 @@ async function submitReschedule() {
                   <p class="text-sm text-dark-500">
                     {formatDuration(rep.start_time, rep.end_time)} · {group.room ? formatCurrency(group.room.price_per_hour) : ''}/hr
                   </p>
+                  {#if (rep.excluded_ranges ?? []).length > 0}
+                    <p class="mt-1 text-xs font-medium text-amber-700">
+                      &#9888; Cannot use room: {exclusionLabel(rep.excluded_ranges)} (booked by another guest). Available to you: {availableSegments(rep.excluded_ranges ?? [])}
+                    </p>
+                  {/if}
                 </div>
                 <div class="flex items-center gap-2">
                   {#if group.status === 'pending'}
@@ -718,6 +760,11 @@ async function submitReschedule() {
                   {/if}
                   · {formatTime(rep.start_time)} - {formatTime(rep.end_time)}
                 </p>
+                {#if (rep.excluded_ranges ?? []).length > 0}
+                  <p class="mt-1 text-xs font-medium text-amber-700">
+                    &#9888; Could not use room: {exclusionLabel(rep.excluded_ranges)} (booked by another guest). Available to you: {availableSegments(rep.excluded_ranges ?? [])}
+                  </p>
+                {/if}
                 {#if canReview && !alreadyReviewed}
                   <p class="mt-1 text-xs text-gold-600">Rate your visit — we'd love your feedback.</p>
                 {/if}

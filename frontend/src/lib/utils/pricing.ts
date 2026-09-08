@@ -107,12 +107,17 @@ export function planReferencePrice(room: Room, plan: Plan): number {
  * start/end times. Weekly/Monthly use the per-room configured rate; every
  * other period is derived from the room's hourly rate and the applicable flat
  * half/full-day rates.
+ *
+ * `excludedMinutes` (full-day passes only): when another guest already holds
+ * part of the day, the pass's flat fee is pro-rated over the hours that remain
+ * usable — e.g. a 10-hour full-day at $350 with 1 hour excluded charges $315.
  */
 export function quoteForBooking(
 	room: Room,
 	plan: Plan | null,
 	startTime: string,
-	endTime: string
+	endTime: string,
+	excludedMinutes = 0
 ): Quote {
 	const totalMinutes = timeToMinutes(endTime) - timeToMinutes(startTime);
 
@@ -147,7 +152,22 @@ export function quoteForBooking(
 	}
 
 	const fullDay = card ? card.fullDay : round2(hourly * FULL_DAY_HOURS);
-	return { label: 'Full-day', unitPrice: fullDay, quantity: 1, total: fullDay };
+
+	// A full-day pass with hours excluded is charged pro-rata: the flat rate is
+	// scaled by the share of the day that actually remains usable.
+	const chargedMinutes = Math.max(0, totalMinutes - excludedMinutes);
+	if (chargedMinutes <= 0) {
+		return { label: 'Full-day', unitPrice: fullDay, quantity: 1, total: 0 };
+	}
+	const hoursLeft = chargedMinutes / 60;
+	return {
+		label: excludedMinutes > 0
+			? `Full-day (${hoursLeft} hour${hoursLeft === 1 ? '' : 's'})`
+			: 'Full-day',
+		unitPrice: fullDay,
+		quantity: 1,
+		total: excludedMinutes > 0 ? round2(fullDay * (chargedMinutes / totalMinutes)) : fullDay
+	};
 }
 
 /**
@@ -171,7 +191,18 @@ export function quoteForStoredBooking(booking: Booking): Quote {
 		};
 	}
 
-	return quoteForBooking(room, plan, booking.start_time, booking.end_time);
+	return quoteForBooking(room, plan, booking.start_time, booking.end_time, excludedRangesMinutes(booking));
+}
+/**
+ * Minutes of a stored booking's day that are excluded from the pass because
+ * another guest held them (full-day passes with `excluded_ranges` set).
+ */
+function excludedRangesMinutes(booking: Booking): number {
+	const ranges = booking.excluded_ranges;
+	if (!ranges || ranges.length === 0) return 0;
+	return ranges.reduce((total, r) => {
+		return total + Math.max(0, timeToMinutes(r.end_time) - timeToMinutes(r.start_time));
+	}, 0);
 }
 
 // ============================================

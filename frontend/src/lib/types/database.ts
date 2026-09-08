@@ -32,6 +32,12 @@ export type BookingStatus = 'pending' | 'paid' | 'completed' | 'cancelled' | 'ex
 export type PaymentMethod = 'onsite';
 export type BookingChargeType = 'membership' | 'additional' | null;
 
+/** A time window within a booking, e.g. an hour excluded from a full-day pass. */
+export interface TimeRange {
+	start_time: string; // 'HH:MM:SS'
+	end_time: string; // 'HH:MM:SS'
+}
+
 export interface Booking {
 	id: string;
 	booking_number: string;
@@ -41,6 +47,8 @@ export interface Booking {
 	date: string; // ISO date, e.g. '2026-08-27'
 	start_time: string; // 'HH:MM:SS'
 	end_time: string; // 'HH:MM:SS'
+	/** Hours within start_time/end_time that another guest already holds and so are NOT part of this booking (full-day passes only). */
+	excluded_ranges: TimeRange[];
 	guest_name: string;
 	guest_email: string;
 	guest_phone: string | null;
@@ -152,4 +160,5 @@ export interface BookingDraft {
 	guest_email: string;
 	guest_phone: string;
 	purpose: string;
+	excluded_ranges?: TimeRange[];
 }

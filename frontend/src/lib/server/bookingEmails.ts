@@ -1,5 +1,6 @@
 import { sendMail } from '$lib/server/mail';
 import { createServerClient } from '$lib/supabase/server';
+import type { TimeRange } from '$lib/types/database';
 
 type BookingSummary = {
 	id: string;
@@ -7,6 +8,7 @@ type BookingSummary = {
 	date: string;
 	start_time: string;
 	end_time: string;
+	excluded_ranges?: TimeRange[];
 };
 
 type BookingEmailParams = {
@@ -15,6 +17,26 @@ type BookingEmailParams = {
 	roomName: string;
 	bookings: BookingSummary[];
 };
+
+function formatExclusions(excluded_ranges: TimeRange[]): string {
+	return excluded_ranges
+		.map((r) => `  \u2022 ${r.start_time}\u2013${r.end_time}`)
+		.join('\n');
+}
+
+function exclusionNote(bookings: BookingSummary[]): string {
+	const withExclusions = bookings.filter((b) => (b.excluded_ranges ?? []).length > 0);
+	if (withExclusions.length === 0) return '';
+
+	const note = withExclusions
+		.map(
+			(b) =>
+				`  \u2022 ${b.booking_number} (${b.date}): the following business hour(s) are already booked by other guests and are NOT included in your pass \u2014 you won't be able to use the room then:\n${formatExclusions(b.excluded_ranges!)}`,
+		)
+		.join('\n');
+
+	return `\nNote: Your pass excludes time held by other guests.\n${note}\n`;
+}
 
 function formatBookingList(bookings: BookingSummary[]): string {
 	return bookings
@@ -41,7 +63,7 @@ export function sendBookingConfirmationEmail(params: BookingEmailParams): void {
 
 We've received your booking request for ${roomName}:
 
-${formatBookingList(bookings)}
+${formatBookingList(bookings)}${exclusionNote(bookings)}
 
 Your booking${plural ? 's are' : ' is'} currently pending payment. Please complete payment within 30 minutes, or the reservation will be released automatically.
 
@@ -123,7 +145,7 @@ export function schedulePaymentReminder(params: BookingEmailParams): void {
 
 This is a reminder that payment is still needed for your booking at ${roomName}:
 
-${formatBookingList(bookings)}
+${formatBookingList(bookings)}${exclusionNote(bookings)}
 
 Booking reference${plural ? 's' : ''}: ${numbers}
 

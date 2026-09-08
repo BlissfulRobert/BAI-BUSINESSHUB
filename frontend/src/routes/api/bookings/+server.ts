@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createServerClient } from '$lib/supabase/server';
-import { isPastDate, isWeekend, rangesOverlap, timeToMinutes } from '$lib/utils/dates';
+import { isPastDate, isWeekend, minutesToTime, rangesOverlap, timeToMinutes } from '$lib/utils/dates';
 import { isVictorianHoliday } from '$lib/utils/holidays';
 import { sendMail, getAdminEmails } from '$lib/server/mail';
 import { sendBookingConfirmationEmail, schedulePaymentReminder } from '$lib/server/bookingEmails';
 import { expireStalePendingBookings } from '$lib/server/expireBookings';
-import type { BookingChargeType, Membership } from '$lib/types/database';
+import type { BookingChargeType, Membership, TimeRange } from '$lib/types/database';
 
 const BLOCKING_STATUSES = ['pending', 'paid', 'completed'];
 // Membership included-hours only cover on-demand (hourly/period) bookings;
@@ -23,6 +23,36 @@ function monthEnd(isoDate: string): string {
 	const [y, m] = isoDate.split('-');
 	const lastDay = new Date(Date.UTC(+y, +m, 0)).getUTCDate();
 	return `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
+}
+
+/** Sorts and merges overlapping/adjacent minute ranges into a minimal set. */
+function mergeMinuteRanges(ranges: [number, number][]): [number, number][] {
+	const sorted = [...ranges].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+	const merged: [number, number][] = [];
+	for (const [start, end] of sorted) {
+		const last = merged[merged.length - 1];
+		if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+		else merged.push([start, end]);
+	}
+	return merged;
+}
+
+function rangesEqual(a: [number, number][], b: [number, number][]): boolean {
+	return a.length === b.length && a.every((r, i) => r[0] === b[i][0] && r[1] === b[i][1]);
+}
+
+function formatDateLabel(isoDate: string): string {
+	return new Date(`${isoDate}T00:00:00`).toLocaleDateString('en-AU', {
+		weekday: 'long',
+		day: 'numeric',
+		month: 'long'
+	});
+}
+
+function formatMinuteRanges(ranges: [number, number][]): string {
+	return ranges
+		.map(([s, e]) => `${minutesToTime(s)}–${minutesToTime(e)}`)
+		.join(', ');
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -57,6 +87,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		dates, // string[] — one row will be created per date (Weekly/Monthly repeat the same time across several days; Daily/others send a single-element array)
 		start_time,
 		end_time,
+		excluded_ranges, // TimeRange[] — hours already held by other guests that a pass accepts being excluded (single-date plans)
+		excluded_ranges_by_date, // Record<string, TimeRange[]> — the same, per date, for Weekly/Monthly passes spanning several days
 		guest_name,
 		guest_email,
 		guest_phone,
@@ -83,51 +115,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ message: 'Cannot book a date in the past.' }, { status: 400 });
 	}
 
-	// Re-check availability server-side for every date in the series — the
-	// client's slot list may be stale if someone else booked one of these
-	// dates in the meantime. There's no DB-level exclusion constraint on
-	// (room_id, date, time range) in the current schema, so this
-	// check-then-insert is best-effort; consider adding a Postgres EXCLUDE
-	// constraint (btree_gist) on bookings for airtight protection.
-	const { data: existing, error: existingError } = await supabase
-		.from('bookings')
-		.select('date, start_time, end_time')
-		.eq('room_id', room_id)
-		.in('date', dates)
-		.in('status', BLOCKING_STATUSES);
-
-	if (existingError) {
-		return json({ message: 'Could not verify availability. Please try again.' }, { status: 500 });
-	}
-
-	const conflictDates = dates.filter((date: string) =>
-		(existing ?? []).some(
-			(b: { date: string; start_time: string; end_time: string }) =>
-				b.date === date &&
-				rangesOverlap(
-					timeToMinutes(start_time),
-					timeToMinutes(end_time),
-					timeToMinutes(b.start_time),
-					timeToMinutes(b.end_time)
-				)
-		)
-	);
-
-	if (conflictDates.length > 0) {
-		return json(
-			{
-				message: `That time is already booked on: ${conflictDates.join(', ')}. Please pick another time or start date.`,
-				conflictDates
-			},
-			{ status: 409 }
-		);
-	}
-
 	// ==========================================================
-	// MEMBERSHIP / INCLUDED-HOURS COVERAGE (Sections 6, 7, 8)
-	// Determine, per date, whether the booking is covered by the user's
-	// membership included hours ('membership'), bills as additional usage at
-	// standard rates ('additional'), or is a separate pass purchase (null).
+	// ROOM + PLAN are needed to decide how conflicts are handled:
+	// a Full-day, Half-day, Weekly or Monthly pass may proceed
+	// despite overlapping bookings by recording the held hours as
+	// "excluded"; every other plan only ever books free time, so any
+	// overlap is a hard conflict.
 	// ==========================================================
 	const { data: room } = await supabase
 		.from('rooms')
@@ -139,9 +132,197 @@ export const POST: RequestHandler = async ({ request }) => {
 		? await supabase.from('plans').select('id, slug, name').eq('id', plan_id).single()
 		: { data: null };
 
+	// Full-day, half-day, weekly and monthly passes may book around hours another
+	// guest already holds, recording those hours as "excluded" once the client
+	// acknowledges them; every other plan only ever books free time, so any
+	// overlap is a hard conflict.
+	const canExclude =
+		plan?.slug === 'full-day' ||
+		plan?.slug === 'half-day' ||
+		plan?.slug === 'weekly' ||
+		plan?.slug === 'monthly';
+	const requestStart = timeToMinutes(start_time);
+	const requestEnd = timeToMinutes(end_time);
+
+	// Re-check availability server-side for every date in the series — the
+	// client's slot list may be stale if someone else booked one of these
+	// dates in the meantime. There's no DB-level exclusion constraint on
+	// (room_id, date, time range) in the current schema, so this
+	// check-then-insert is best-effort; consider adding a Postgres EXCLUDE
+	// constraint (btree_gist) on bookings for airtight protection.
+	//
+	// user_id is fetched so a pass can tell "other guests' holds"
+	// apart from the caller's own bookings: your own prior booking on the same
+	// day must NOT look like an hour someone else took (it would turn the day
+	// into a self-imposed conflict). Plans without exclusions still check every
+	// booking, including the caller's own, to prevent double-booking yourself.
+	const { data: existing, error: existingError } = await supabase
+		.from('bookings')
+		.select('user_id, date, start_time, end_time, excluded_ranges')
+		.eq('room_id', room_id)
+		.in('date', dates)
+		.in('status', BLOCKING_STATUSES);
+
+	if (existingError) {
+		return json({ message: 'Could not verify availability. Please try again.' }, { status: 500 });
+	}
+
+	// Hours already held by other guests that the caller's pass agrees to
+	// exclude, per date. Server-authoritative: recomputed from the query
+	// result, then verified against what the client showed/acked.
+	const excludedRangesByDate: Record<string, TimeRange[]> = {};
+
+	if (canExclude) {
+		// The client acknowledges the held hours per date: a Weekly series sends
+		// excluded_ranges_by_date, single-date plans send the flat excluded_ranges.
+		const useByDate = !!excluded_ranges_by_date;
+		function clientExcludedFor(date: string): [number, number][] {
+			const ranges = useByDate
+				? (excluded_ranges_by_date as Record<string, TimeRange[]>)[date] ?? []
+				: (excluded_ranges ?? []);
+			return mergeMinuteRanges(
+				ranges.map(
+					(r: TimeRange) =>
+						[timeToMinutes(r.start_time), timeToMinutes(r.end_time)] as [number, number]
+				)
+			);
+		}
+
+		// Minutes a blocking booking genuinely holds on the requested day. A
+	// pass with its own excluded_ranges does NOT hold those hours
+	// (they belonged to a third guest), so they are carved out before the
+	// union below — otherwise one leftover pass would look like it
+	// blocks the entire day.
+	function heldRange(b: {
+		start_time: string;
+		end_time: string;
+		excluded_ranges?: TimeRange[];
+	}): [number, number][] {
+		const start = timeToMinutes(b.start_time);
+		const end = timeToMinutes(b.end_time);
+		const exclusions = (b.excluded_ranges ?? [])
+			.map(
+				(r: TimeRange) =>
+					[timeToMinutes(r.start_time), timeToMinutes(r.end_time)] as [number, number]
+			)
+			.sort((a, c: [number, number]) => a[0] - c[0] || a[1] - c[1]);
+
+		if (exclusions.length === 0) return [[start, end]];
+
+		const held: [number, number][] = [];
+		let cursor = start;
+		for (const [es, ee] of exclusions) {
+			if (cursor < es) held.push([cursor, Math.min(es, end)]);
+			cursor = Math.max(cursor, ee);
+		}
+		if (cursor < end) held.push([cursor, end]);
+		return held.length > 0 ? held : [[start, end]];
+	}
+
+	for (const date of dates) {
+			// Only OTHER guests' bookings count as excluded hours for a
+			// pass — the caller's own holds are theirs already and
+			// must not turn the day into a self-conflict.
+			const overlapping = (existing ?? []).filter(
+				(b: { user_id: string; date: string; start_time: string; end_time: string }) =>
+					b.user_id !== user.id &&
+					b.date === date &&
+					rangesOverlap(
+						requestStart,
+						requestEnd,
+						timeToMinutes(b.start_time),
+						timeToMinutes(b.end_time)
+					)
+			);
+
+			// The held hours are the union of what each overlapping booking
+			// genuinely occupies.
+			const required = mergeMinuteRanges(
+				overlapping.flatMap((b) =>
+					heldRange(b)
+						.map(
+							([s, e]) =>
+								[
+									Math.max(s, requestStart),
+									Math.min(e, requestEnd)
+								] as [number, number]
+						)
+						.filter(([s, e]) => s < e)
+				)
+			);
+			if (required.length === 0) continue; // this date is fully free
+
+			// A single-date request whose whole window is gone has nothing to
+			// offer — hard conflict. A weekly series may still proceed: a fully
+			// booked day is simply excluded and the rest of the week stays usable.
+			if (
+				dates.length === 1 &&
+				required.length === 1 &&
+				required[0][0] <= requestStart &&
+				required[0][1] >= requestEnd
+			) {
+				return json(
+					{
+						message: `${formatDateLabel(date)} has no free time left in the period you asked for. Please pick another time or day.`,
+						conflictDates: [date]
+					},
+					{ status: 409 }
+				);
+			}
+
+			// The client must have acknowledged exactly these hours; anything
+			// else means the snapshot the user approved is already stale.
+			if (!rangesEqual(clientExcludedFor(date), required)) {
+				return json(
+					{
+						message: `Another booking just claimed time on ${formatDateLabel(date)}. Your pass would now need to exclude ${formatMinuteRanges(required)}. Please review and confirm again.`,
+						conflictDates: [date]
+					},
+					{ status: 409 }
+				);
+			}
+
+			excludedRangesByDate[date] = required.map(([s, e]) => ({
+				start_time: minutesToTime(s),
+				end_time: minutesToTime(e)
+			}));
+		}
+	} else {
+		const conflictDates = dates.filter((date: string) =>
+			(existing ?? []).some(
+				(b: { date: string; start_time: string; end_time: string }) =>
+					b.date === date &&
+					rangesOverlap(
+						requestStart,
+						requestEnd,
+						timeToMinutes(b.start_time),
+						timeToMinutes(b.end_time)
+					)
+			)
+		);
+
+		if (conflictDates.length > 0) {
+			return json(
+				{
+					message: `That time is already booked on: ${conflictDates.join(', ')}. Please pick another time or start date.`,
+					conflictDates
+				},
+				{ status: 409 }
+			);
+		}
+	}
+
+	// ==========================================================
+	// MEMBERSHIP / INCLUDED-HOURS COVERAGE (Sections 6, 7, 8)
+	// Determine, per date, whether the booking is covered by the user's
+	// membership included hours ('membership'), bills as additional usage at
+	// standard rates ('additional'), or is a separate pass purchase (null).
+	// ==========================================================
+
 	// Block bookings on closed days (weekends and Victorian public holidays).
-	// Monthly passes are a recurring calendar-month access and keep their full
-	// range; every other plan must book on an open weekday.
+	// Monthly passes are a 20-weekday series (weekends/holidays already skipped
+	// on the client), so this check is mostly redundant for them; every other
+	// plan must book on an open weekday.
 	if (plan?.slug !== 'monthly') {
 		const closed = dates.filter((d: string) => isWeekend(d) || isVictorianHoliday(d));
 		if (closed.length > 0) {
@@ -231,7 +412,18 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const isOnDemand =
 		!!plan && ON_DEMAND_PLAN_SLUGS.includes(plan.slug as string);
-	const minutes = timeToMinutes(end_time) - timeToMinutes(start_time);
+	const baseMinutes = timeToMinutes(end_time) - timeToMinutes(start_time);
+
+	// Minutes a BookingChargeType actually occupies on a date: a pass
+	// with excluded hours bills the hours it can actually use, not the ones
+	// another guest already holds.
+	function minutesForDate(date: string): number {
+		const excluded = (excludedRangesByDate[date] ?? []).reduce(
+			(total, r) => total + (timeToMinutes(r.end_time) - timeToMinutes(r.start_time)),
+			0
+		);
+		return Math.max(0, baseMinutes - excluded);
+	}
 
 	const chargeTypeByDate: Record<string, BookingChargeType> = {};
 	let usageByPeriod: { period_start: string; period_end: string; minutes: number }[] = [];
@@ -263,13 +455,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		const usedAccum: Record<string, number> = {};
 		for (const date of dates) {
 			const ps = monthStart(date);
+			const dateMinutes = minutesForDate(date);
 			const used = (usedAccum[ps] ?? 0) + (usedByPeriod[ps] ?? 0);
-			if (used + minutes <= includedMinutes) {
+			if (used + dateMinutes <= includedMinutes) {
 				chargeTypeByDate[date] = 'membership';
-				usedAccum[ps] = (usedAccum[ps] ?? 0) + minutes;
+				usedAccum[ps] = (usedAccum[ps] ?? 0) + dateMinutes;
 				const existing = usageByPeriod.find((u) => u.period_start === ps);
-				if (existing) existing.minutes += minutes;
-				else usageByPeriod.push({ period_start: ps, period_end: monthEnd(date), minutes });
+				if (existing) existing.minutes += dateMinutes;
+				else usageByPeriod.push({ period_start: ps, period_end: monthEnd(date), minutes: dateMinutes });
 			} else {
 				chargeTypeByDate[date] = 'additional';
 			}
@@ -286,6 +479,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		date,
 		start_time,
 		end_time,
+		excluded_ranges: excludedRangesByDate[date] ?? [],
 		guest_name,
 		guest_email,
 		guest_phone: guest_phone ?? null,
@@ -329,7 +523,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		booking_number: b.booking_number as string,
 		date: b.date as string,
 		start_time: b.start_time as string,
-		end_time: b.end_time as string
+		end_time: b.end_time as string,
+		excluded_ranges: (b.excluded_ranges as TimeRange[] | null) ?? []
 	}));
 	const bookingNumbersLabel = bookingSummaries.map((b) => b.booking_number).join(', ');
 

@@ -12,6 +12,7 @@
     Plan,
     Membership,
     MembershipUsage,
+    TimeRange,
   } from "$lib/types/database";
   import {
     formatDate,
@@ -309,6 +310,14 @@
     status: Booking["status"];
     isSeries: boolean;
     price: number;
+    excluded_ranges: TimeRange[];
+  }
+
+  // Hours a full-day pass had to give up because another guest held them.
+  function exclusionLabel(ranges: TimeRange[]): string {
+    return ranges
+      .map((r) => `${formatTime(r.start_time)}\u2013${formatTime(r.end_time)}`)
+      .join(", ");
   }
 
   $: bookingGroups = groupBookings(bookings).map<AdminBookingGroup>((g) => {
@@ -327,6 +336,7 @@
       status: g.status,
       isSeries: g.isSeries,
       price: quoteForStoredBooking(first).total,
+      excluded_ranges: first.excluded_ranges ?? [],
     };
   });
 
@@ -1332,6 +1342,11 @@
                                 <p class="font-medium">{formatDate(group.dates[0])}</p>
                               {/if}
                               <p class="text-xs text-dark-900">{formatTime(group.start_time)} &ndash; {formatTime(group.end_time)}</p>
+                              {#if group.excluded_ranges.length > 0}
+                                <p class="mt-1 text-xs font-medium text-amber-700">
+                                  &#9888; Guest can't use room: {exclusionLabel(group.excluded_ranges)} (booked by another guest)
+                                </p>
+                              {/if}
                             </div>
                           </div>
 
