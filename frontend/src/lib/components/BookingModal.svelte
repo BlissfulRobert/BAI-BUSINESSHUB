@@ -1513,39 +1513,10 @@
               </button>
             {/each}
           </div>
-        </div>
-
-        <!-- Date -->
-        <div>
-          <p class="mb-3 text-sm font-medium text-dark-600">
-            {isSeriesPlan ? "Select Start Date" : "Select Date"}
-          </p>
-
-          {#if isSeriesPlan}
-            <p class="mb-3 text-xs text-dark-500">
-              {selectedPlan?.slug === "weekly"
-                ? "Repeats weekdays only (Mon\u2013Fri) from your start date."
-                : "Repeats daily for the month from your start date."}
-            </p>
-          {/if}
-
-          <Calendar
-            {bookingsByDate}
-            {selectedDate}
-            rangeDates={isSeriesPlan ? seriesDates : []}
-            lookaheadDays={CALENDAR_LOOKAHEAD_DAYS}
-            on:selectDate={(e) => {
-              selectedDate = e.detail;
-              acknowledgedExclusions = false;
-              // Freshen the preview/count the moment a day is picked so it
-              // reflects any booking made since the last refresh.
-              loadBookings();
-            }}
-          />
 
           {#if selectedDate}
             <div
-              class="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-4"
+              class="mt-6 rounded-xl border border-primary-100 bg-primary-50 p-4"
             >
               <div
                 class="mb-2 flex flex-wrap items-center justify-between gap-2"
@@ -1633,24 +1604,53 @@
             </div>
           {/if}
         </div>
-      </div>
 
-      <div class="mt-6 flex items-center justify-between">
-        {#if step1Hints.length > 0}
-          <div class="space-y-0.5 text-xs text-dark-500">
-            {#each step1Hints as hint}
-              <p>• {hint}</p>
-            {/each}
+        <!-- Date -->
+        <div>
+          <p class="mb-3 text-sm font-medium text-dark-600">
+            {isSeriesPlan ? "Select Start Date" : "Select Date"}
+          </p>
+
+          {#if isSeriesPlan}
+            <p class="mb-3 text-xs text-dark-500">
+              {selectedPlan?.slug === "weekly"
+                ? "Repeats weekdays only (Mon\u2013Fri) from your start date."
+                : "Repeats daily for the month from your start date."}
+            </p>
+          {/if}
+
+          <Calendar
+            {bookingsByDate}
+            {selectedDate}
+            rangeDates={isSeriesPlan ? seriesDates : []}
+            lookaheadDays={CALENDAR_LOOKAHEAD_DAYS}
+            on:selectDate={(e) => {
+              selectedDate = e.detail;
+              acknowledgedExclusions = false;
+              // Freshen the preview/count the moment a day is picked so it
+              // reflects any booking made since the last refresh.
+              loadBookings();
+            }}
+          />
+
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+            {#if step1Hints.length > 0}
+              <div class="space-y-0.5 text-xs text-dark-500">
+                {#each step1Hints as hint}
+                  <p>• {hint}</p>
+                {/each}
+              </div>
+            {/if}
+            <button
+              type="button"
+              class="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-50 ml-auto"
+              disabled={!canContinue1}
+              on:click={nextStep}
+            >
+              Continue
+            </button>
           </div>
-        {/if}
-        <button
-          type="button"
-          class="btn-primary px-6 py-2.5 disabled:cursor-not-allowed disabled:opacity-50 ml-auto"
-          disabled={!canContinue1}
-          on:click={nextStep}
-        >
-          Continue
-        </button>
+        </div>
       </div>
     {/if}
 
