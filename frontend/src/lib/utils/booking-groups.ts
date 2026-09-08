@@ -1,10 +1,11 @@
 import type { Booking, Room, Plan } from '$lib/types/database';
+import { getSeriesDates } from '$lib/utils/dates';
 
-// Weekly/Monthly bookings create one DB row per date, but they are a single
-// purchase. Group them back into one "series" so a pass shows as one card
-// instead of one card per day. A series is identified by room + user + plan +
-// time range; rows from one insert share the same created_at, which keeps
-// separate weekly passes on different weeks apart.
+// Weekly/Monthly passes are a single booking row spanning date..end_date. They
+// expand back into their covered days here so a pass shows as one card listing
+// every day it reserves. A series key (room + user + plan + time range) keeps
+// separate passes apart; rows from one legacy insert share the same created_at,
+// which keeps old multi-row passes grouped the way they were created.
 export function seriesKey(b: Booking): string {
 	const slug = b.plan?.slug;
 	if (slug === 'weekly' || slug === 'monthly') {
@@ -26,9 +27,10 @@ export interface BookingGroup {
 }
 
 // Groups bookings into series, preserving booking order (rows sorted by date
-// ascending within each group). Non-series bookings become their own group.
-// Keys and dates are de-duplicated so a keyed {#each} never sees a null or
-// duplicate key (which would crash the UI).
+// ascending within each group). Weekly/Monthly period rows are expanded into
+// their covered days so a single-row pass lists every reserved date.
+// Non-series bookings become their own group. Keys and dates are de-duplicated
+// so a keyed {#each} never sees a null or duplicate key (which would crash the UI).
 export function groupBookings(bookings: Booking[]): BookingGroup[] {
 	const ordered = [...bookings].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 	const map = new Map<string, BookingGroup>();
@@ -53,8 +55,15 @@ export function groupBookings(bookings: Booking[]): BookingGroup[] {
 			map.set(key, existing);
 		}
 		existing.bookings.push(b);
-		// Keep dates unique and sorted so keyed {#each ... (iso)} never collides.
-		if (b.date && !existing.dates.includes(b.date)) {
+		// A Weekly/Monthly pass is stored as one row covering date..end_date;
+		// expand it back into each reserved day for display + upcoming/past logic.
+		if (b.date && b.end_date && (b.plan?.slug === 'weekly' || b.plan?.slug === 'monthly')) {
+			const covered = getSeriesDates(b.date, b.plan);
+			for (let d = 0; d < covered.length; d++) {
+				if (!existing.dates.includes(covered[d])) existing.dates.push(covered[d]);
+			}
+			existing.dates.sort();
+		} else if (b.date && !existing.dates.includes(b.date)) {
 			existing.dates.push(b.date);
 			existing.dates.sort();
 		}

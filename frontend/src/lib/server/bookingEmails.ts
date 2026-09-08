@@ -6,6 +6,7 @@ type BookingSummary = {
 	id: string;
 	booking_number: string;
 	date: string;
+	end_date: string | null;
 	start_time: string;
 	end_time: string;
 	excluded_ranges?: TimeRange[];
@@ -38,9 +39,24 @@ function exclusionNote(bookings: BookingSummary[]): string {
 	return `\nNote: Your pass excludes time held by other guests.\n${note}\n`;
 }
 
+function shortDate(iso: string): string {
+	const d = new Date(iso.slice(0, 10) + 'T00:00:00');
+	if (isNaN(d.getTime())) return iso;
+	return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+// Weekly/Monthly passes are a single booking row spanning date..end_date; show
+// the range ("Mon 14 Sep – Fri 18 Sep") instead of a single day.
+function dateRangeLabel(b: BookingSummary): string {
+	if (b.end_date && b.end_date !== b.date) {
+		return `${shortDate(b.date)} \u2013 ${shortDate(b.end_date)}`;
+	}
+	return shortDate(b.date);
+}
+
 function formatBookingList(bookings: BookingSummary[]): string {
 	return bookings
-		.map((b) => `  \u2022 ${b.booking_number} \u2014 ${b.date}, ${b.start_time}\u2013${b.end_time}`)
+		.map((b) => `  \u2022 ${b.booking_number} \u2014 ${dateRangeLabel(b)}, ${b.start_time}\u2013${b.end_time}`)
 		.join('\n');
 }
 

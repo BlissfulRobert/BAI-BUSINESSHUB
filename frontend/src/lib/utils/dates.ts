@@ -122,8 +122,12 @@ export function isWeekend(iso: string): boolean {
  * closed day the first open weekday on/after it is used as day one. When given
  * the current bookings, closed-on-the-day fully-booked days are skipped too so
  * the pass is still 5/20 rentable days. Any other plan is a single day.
+ *
+ * This is the single source of truth for both the client (prediction, calendar
+ * range highlight) and the server (stored end_date + conflict checks), so the
+ * days shown to the user always match the stored period.
  */
-export function getSeriesDates(startIso: string, plan: Plan): string[] {
+export function getSeriesDates(startIso: string, plan: Pick<Plan, 'slug'>): string[] {
 	if (plan.slug === 'weekly') {
 		return getBusinessDaySeries(startIso, 5);
 	}

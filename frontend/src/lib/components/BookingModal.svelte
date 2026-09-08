@@ -9,6 +9,8 @@
     CALENDAR_LOOKAHEAD_DAYS,
     HUB_CLOSE_HOUR,
     HUB_OPEN_HOUR,
+    MAX_SERIES_DAYS,
+    addDays,
     buildTimeSlots,
     getFreeHourCount,
     getSeriesDates,
@@ -136,15 +138,10 @@
       : "",
   ].filter(Boolean);
 
-  // The step that owns the time selection for the chosen plan: full-day, weekly
-  // and monthly keep the whole business day fixed (9–7), so the acknowledgement
-  // fires once a date is chosen on step 1; half-day picks start/end on step 2.
-  $: exclusionTriggerStep =
-    isFullDayPlan || isWeeklyPlan || isMonthlyPlan
-      ? 1
-      : isHalfDayPlan
-        ? 2
-        : 0;
+  // The step that owns the time selection for the chosen plan: full-day keeps
+  // the whole business day fixed (9–7), so the acknowledgement fires once a date
+  // is chosen on step 1; half-day picks start/end on step 2.
+  $: exclusionTriggerStep = isFullDayPlan ? 1 : isHalfDayPlan ? 2 : 0;
 
   function nextStep() {
     // If another guest holds part of the chosen window, intercept before
@@ -227,8 +224,9 @@
 
   const stepTitles = ["Plan & Date", "Time & Details", "Confirm"];
 
-  // Weekly/Monthly plans repeat the same time across several dates; keep the
-  // room's blocking bookings so the calendar can mark fully-booked days.
+  // Weekly/Monthly passes are stored as ONE booking row spanning from the
+  // start date to end_date; the covered dates are expanded from that row below
+  // so the calendar marks every covered day as blocked.
   let bookingsByDate: Record<string, Booking[]> = {};
 
   $: isSeriesPlan =
@@ -245,11 +243,12 @@
   $: isWeeklyPlan = selectedPlan?.slug === "weekly";
   $: isMonthlyPlan = selectedPlan?.slug === "monthly";
 
-  // Plans allowed to book around hours another guest already holds. Hourly
+  // Plans allowed to book around hours another guest already holds. Only
+  // Full-day and Half-day passes do this. Weekly/Monthly book a single period
+  // spanning several days and instead skip fully-booked days entirely; Hourly
   // stays a hard block (a 30/60-minute block with carved-out minutes is nearly
   // never useful).
-  $: exclusionEligiblePlan =
-    isFullDayPlan || isHalfDayPlan || isWeeklyPlan || isMonthlyPlan;
+  $: exclusionEligiblePlan = isFullDayPlan || isHalfDayPlan;
   // Plans whose price is reduced by excluded hours. Weekly/Monthly are flat
   // rates, so exclusions shrink their usable time but never their fee.
   $: exclusionBilledPlan = isFullDayPlan || isHalfDayPlan;
@@ -491,7 +490,7 @@
     } catch {
       let query = supabase
         .from("bookings")
-        .select("id, room_id, user_id, plan_id, date, start_time, end_time, status, excluded_ranges")
+        .select("id, room_id, user_id, plan_id, date, end_date, start_time, end_time, status, excluded_ranges")
         .eq("room_id", room.id)
         .gte("date", today)
         .in("status", BLOCKING_STATUSES);
@@ -500,13 +499,22 @@
       data = (fallback ?? []) as Booking[];
     }
 
-    bookingsByDate = (data ?? []).reduce<Record<string, Booking[]>>(
-      (acc, b) => {
-        (acc[b.date] ??= []).push(b);
-        return acc;
-      },
-      {},
-    );
+    // Weekly/Monthly passes are a single row spanning date..end_date; expand
+    // each row back into every covered day so all per-day views (calendar
+    // dots, step-1 hour chips, step-2 greyed times) treat the span as blocked.
+    bookingsByDate = ((data ?? []) as Booking[]).reduce<
+      Record<string, Booking[]>
+    >((acc, b) => {
+      const end = b.end_date ?? b.date;
+      let cur = b.date;
+      let guard = 0;
+      while (cur <= end && guard <= MAX_SERIES_DAYS) {
+        guard++;
+        (acc[cur] ??= []).push(b);
+        cur = addDays(cur, 1);
+      }
+      return acc;
+    }, {});
   }
 
   // ---- Live availability sync ---------------------------------------------
@@ -1282,8 +1290,9 @@
           room_id: room.id,
           plan_id: selectedPlan.id,
 
-          // Weekly/Monthly book every day in the series; single-day
-          // plans send a one-element array.
+          // Send the pass start date (first series day). The server derives
+          // the stored period (date + end_date) from the same getSeriesDates
+          // helper. Single-day plans send a one-element array.
           dates: isSeriesPlan ? seriesDates : [selectedDate],
 
           start_time: startTime,
